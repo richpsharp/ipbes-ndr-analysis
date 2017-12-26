@@ -162,6 +162,10 @@ def merge_watershed_dems(
 
 def build_dem_rtree(dem_path_list, dem_path_index_map_path, dem_rtree_path):
     """Build RTree indexed by FID for points in `wwwiii_vector_path`."""
+    LOGGER.debug(dem_rtree_path+'.dat')
+    if os.path.exists(dem_rtree_path+'.dat'):
+        LOGGER.warn('%s exists so skipping creation.', dem_rtree_path)
+        return
     dem_rtree = rtree.index.Index(dem_rtree_path)
     dem_path_index_map = {}
     for dem_id, dem_path in enumerate(dem_path_list):

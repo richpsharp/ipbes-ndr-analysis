@@ -3,6 +3,7 @@ import logging
 import os
 import glob
 
+import numpy
 import pandas
 import dill
 import taskgraph
@@ -13,7 +14,7 @@ import pygeoprocessing
 import pygeoprocessing.routing
 
 N_CPUS = -1
-TARGET_NODATA = -1
+NODATA = -1
 
 logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
@@ -171,7 +172,7 @@ def main():
         func=pygeoprocessing.reclassify_raster,
         args=(
             (aligned_path_list[2], 1), eff_n_lucode_map, eff_n_raster_path,
-            gdal.GDT_Float32, TARGET_NODATA),
+            gdal.GDT_Float32, NODATA),
         target_path_list=[eff_n_raster_path],
         dependent_task_list=[align_resize_task],
         task_name='reclasify_eff_n_%d' % watershed_id)
@@ -184,12 +185,52 @@ def main():
         func=pygeoprocessing.reclassify_raster,
         args=(
             (aligned_path_list[2], 1), load_n_lucode_map, load_n_raster_path,
-            gdal.GDT_Float32, TARGET_NODATA),
+            gdal.GDT_Float32, NODATA),
         target_path_list=[load_n_raster_path],
         dependent_task_list=[align_resize_task],
         task_name='reclasify_load_n_%d' % watershed_id)
 
-    # calculate ds
+    # calculate modified load (load * precip)
+    def mult_arrays(*array_list):
+        stack = numpy.stack(array_list)
+        valid_mask = (
+            numpy.bitwise_and.reduce(stack != NODATA, axis=0))
+        n_valid = numpy.count_nonzero(valid_mask)
+        broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
+        valid_stack = stack[broadcast_valid_mask].reshape(
+            len(array_list), n_valid)
+        result = numpy.empty(array_list[0].shape, dtype=numpy.float32)
+        result[:] = NODATA
+        result[valid_mask] = numpy.prod(valid_stack, axis=0)
+        return result
+
+    modified_load_raster_path = os.path.join(
+        ws_working_dir, 'modified_load.tif')
+    #aligned_path_list[1] - precipitation
+    modified_load_task = task_graph.add_task(
+        func=pygeoprocessing.raster_calculator,
+        args=(
+            [(load_n_raster_path, 1), (aligned_path_list[1], 1)],
+            mult_arrays, modified_load_raster_path, gdal.GDT_Float32, NODATA),
+        target_path_list=[modified_load_raster_path],
+        dependent_task_list=[reclassify_load_n_task, align_resize_task],
+        task_name='modified_load_%d' % watershed_id)
+
+    # calculate slope
+    # aligned_path_list[0] is dem
+    target_slope_path = os.path.join(ws_working_dir, 'slope.tif')
+    calculate_slope_task = task_graph.add_task(
+        func=pygeoprocessing.routing.calculate_slope,
+        args=((aligned_path_list[0], 1), target_slope_path),
+        target_path_list=[target_slope_path],
+        dependent_task_list=[align_resize_task],
+        task_name='calculate_slope_%d' % watershed_id)
+
+    # calcualte D_up
+
+    # calculate flow path length down to stream
+
+    # calculate D_dn
 
     # calculate NDR specific values
 

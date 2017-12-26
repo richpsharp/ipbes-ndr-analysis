@@ -1,11 +1,11 @@
 """Script to manage NDR runs for IPBES project."""
 import logging
 import os
-import dill
+import glob
 
+import dill
 import taskgraph
 import rtree.index
-import glob
 from osgeo import ogr
 import pygeoprocessing
 
@@ -153,7 +153,8 @@ def merge_watershed_dems(
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
         pygeoprocessing.merge_rasters(
-            overlapping_dem_path_list, target_dem_path)
+            overlapping_dem_path_list, target_dem_path,
+            bounding_box=watershed_bb)
     else:
         LOGGER.debug(
             "no overlapping dems found for %s wsid %d", watershed_path,

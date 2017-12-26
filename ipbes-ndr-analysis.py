@@ -191,6 +191,10 @@ def main():
 
     # calculate ds
 
+    # calculate NDR specific values
+
+    # TODO: make results part of precip name?
+
     task_graph.close()
     task_graph.join()
 

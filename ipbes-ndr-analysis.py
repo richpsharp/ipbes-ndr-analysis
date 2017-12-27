@@ -67,6 +67,7 @@ def length_of_degree(lat, lng):
 
     return max(latlen, longlen)
 
+
 def mult_arrays(*array_list):
     """Multiply arrays in array list but block out stacks with NODATA."""
     stack = numpy.stack(array_list)
@@ -80,6 +81,50 @@ def mult_arrays(*array_list):
     result[:] = NODATA
     result[valid_mask] = numpy.prod(valid_stack, axis=0)
     return result
+
+class DUpOp(taskgraph.EncapsulatedTaskOp):
+    """Calculate D_up from Equation 7 of NDR user's guide.
+
+    Given a flow accumulation raster, slope accumulation raster, and pixel
+    size, we can calculate avg(S)*sqrt(A) for each pixel
+        avg(S) = slope_accum / flow_accum
+        A = flow_accum * sqrt(flow_accum * pixel_area**2)
+    """
+    def __init__(
+            self, pixel_area, slope_accum_raster_path,
+            flow_accum_raster_path, target_d_up_raster_path):
+        """Parameters:
+            pixel_area (float): area of input raster pixel in m^2.
+            slope_accum_raster_path (string): path to slope accumulation
+                raster.
+            flow_accum_raster_path (string): path to flow accumulation raster.
+            target_d_up_raster_path (string): path to target d_up raster path
+                created by a call to __call__.
+        """
+        super(DUpOp, self).__init__()
+        self.pixel_area = pixel_area
+        self.slope_accum_raster_path = slope_accum_raster_path
+        self.flow_accum_raster_path = flow_accum_raster_path
+        self.target_d_up_raster_path = target_d_up_raster_path
+
+    def __call__(self):
+        flow_accum_nodata = pygeoprocessing.get_raster_info(
+            self.flow_accum_raster_path)['nodata'][0]
+
+        def d_up_op(slope_accum_array, flow_accmulation_array):
+            result = numpy.empty_like(slope_accum_array)
+            result[:] = NODATA
+            valid_mask = flow_accmulation_array != flow_accum_nodata
+            result[valid_mask] = (
+                slope_accum_array[valid_mask] /
+                flow_accmulation_array[valid_mask]) * numpy.sqrt(
+                flow_accmulation_array[valid_mask] * self.pixel_area)
+            return result
+
+        pygeoprocessing.raster_calculator(
+            [(self.slope_accum_raster_path, 1),
+             (self.flow_accum_raster_path, 1)], d_up_op,
+             self.target_d_up_raster_path, gdal.GDT_Float64, NODATA)
 
 
 def main():
@@ -113,6 +158,7 @@ def main():
 
     dem_pixel_size = pygeoprocessing.get_raster_info(
         dem_path_list[0])['pixel_size']
+    dem_pixel_area = dem_pixel_size[0] ** 2
 
     dem_path_index_map_path = os.path.join(
         TARGET_WORKSPACE, 'dem_path_index_map.dat')
@@ -303,6 +349,15 @@ def main():
         target_path_list=[slope_accum_watershed_dem_path],
         dependent_task_list=[fill_pits_task, calculate_slope_task],
         task_name='slope_accmulation_%s' % ws_prefix)
+
+    d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
+    d_up_task = task_graph.add_task(
+        func=DUpOp(
+            dem_pixel_area, slope_accum_watershed_dem_path,
+            flow_accum_watershed_dem_path, d_up_raster_path),
+        target_path_list=[d_up_raster_path],
+        dependent_task_list=[slope_accmulation_task, flow_accmulation_task],
+        task_name='d_up_%s' % ws_prefix)
 
     # calculate flow path length down to stream
 

@@ -17,6 +17,7 @@ import pygeoprocessing.routing
 
 N_CPUS = -1
 NODATA = -1
+FLOW_THRESHOLD = 1000
 
 logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
@@ -360,12 +361,24 @@ def main():
         task_name='d_up_%s' % ws_prefix)
 
     # calculate flow path length down to stream
+    target_flow_length_raster_path = os.path.join(
+        ws_working_dir, '%s_flow_length.tif' % ws_prefix)
+    downstream_flow_length_task = task_graph.add_task(
+        func=pygeoprocessing.routing.downstream_flow_length,
+        args=(
+            (flow_dir_watershed_dem_path, 1),
+            (flow_accum_watershed_dem_path, 1), FLOW_THRESHOLD,
+            target_flow_length_raster_path),
+        kwargs={'temp_dir_path': ws_working_dir},
+        target_path_list=[target_flow_length_raster_path],
+        dependent_task_list=[fill_pits_task, flow_accmulation_task],
+        task_name='downstream_flow_length_%s' % ws_prefix)
 
     # calculate D_dn
 
     # calculate NDR specific values
 
-    # TODO: make results part of precip name?
+    # TODO: make results part of precip or lulc name for each scenario?
 
     task_graph.close()
     task_graph.join()

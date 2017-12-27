@@ -3,17 +3,17 @@ import logging
 import os
 import glob
 
+import taskgraph
 import numpy
 import pandas
 import dill
-import taskgraph
 import rtree.index
 from osgeo import ogr
 from osgeo import gdal
 import pygeoprocessing
 import pygeoprocessing.routing
 
-N_CPUS = -1
+N_CPUS = 1
 NODATA = -1
 
 logging.basicConfig(
@@ -45,6 +45,21 @@ TARGET_WORKSPACE = 'ndr_workspace'
 TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 
 RTREE_PATH = 'dem_rtree'
+
+
+def mult_arrays(*array_list):
+    """Multiply arrays in array list but block out stacks with NODATA."""
+    stack = numpy.stack(array_list)
+    valid_mask = (
+        numpy.bitwise_and.reduce(stack != NODATA, axis=0))
+    n_valid = numpy.count_nonzero(valid_mask)
+    broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
+    valid_stack = stack[broadcast_valid_mask].reshape(
+        len(array_list), n_valid)
+    result = numpy.empty(array_list[0].shape, dtype=numpy.float32)
+    result[:] = NODATA
+    result[valid_mask] = numpy.prod(valid_stack, axis=0)
+    return result
 
 
 def main():
@@ -191,19 +206,6 @@ def main():
         task_name='reclasify_load_n_%d' % watershed_id)
 
     # calculate modified load (load * precip)
-    def mult_arrays(*array_list):
-        stack = numpy.stack(array_list)
-        valid_mask = (
-            numpy.bitwise_and.reduce(stack != NODATA, axis=0))
-        n_valid = numpy.count_nonzero(valid_mask)
-        broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
-        valid_stack = stack[broadcast_valid_mask].reshape(
-            len(array_list), n_valid)
-        result = numpy.empty(array_list[0].shape, dtype=numpy.float32)
-        result[:] = NODATA
-        result[valid_mask] = numpy.prod(valid_stack, axis=0)
-        return result
-
     modified_load_raster_path = os.path.join(
         ws_working_dir, 'modified_load.tif')
     #aligned_path_list[1] - precipitation

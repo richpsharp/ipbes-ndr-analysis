@@ -1,16 +1,12 @@
 # distutils: language=c++
 """Pitfilling module."""
-import errno
-import os
 import logging
 import shutil
 import tempfile
 import time
 
 import numpy
-import scipy.signal
 import pygeoprocessing
-from pygeoprocessing import geoprocessing
 from osgeo import gdal
 
 cimport numpy
@@ -35,30 +31,11 @@ cdef int _NODATA = NODATA
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
 
-# exposing stl::priority_queue so we can have all 3 template arguments so
-# we can pass a different Compare functor
-cdef extern from "<queue>" namespace "std" nogil:
-    cdef cppclass priority_queue[T, Container, Compare]:
-        priority_queue() except +
-        priority_queue(priority_queue&) except +
-        priority_queue(Container&)
-        bint empty()
-        void pop()
-        void push(T&)
-        size_t size()
-        T& top()
-
-# this is the class type that'll get stored in the priority queue
-cdef struct Pixel:
-    double value
-    int xi
-    int yi
-
 cdef struct FlowPixel:
     int n_i
     int xi
     int yi
-    double flow_val
+    double ret_eff
 
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
@@ -323,16 +300,6 @@ cdef class ManagedRaster:
             raster_band = None
             raster = None
 
-ctypedef pair[int, int] CoordinatePair
-
-# This functor is used to determine order in the priority queue by comparing
-# value only.
-cdef cppclass GreaterPixel nogil:
-    bint get "operator()"(Pixel& lhs, Pixel& rhs):
-        return lhs.value > rhs.value
-
-ctypedef double[:, :] FloatMemView
-
 
 def calculate_downstream_retention(
         flow_dir_raster_path_band, flow_accum_raster_path_band,
@@ -563,10 +530,10 @@ def calculate_downstream_retention(
                     ret_eff_i = ret_eff_managed_raster.get(xi_n, yi_n)
                     if isclose(ret_eff_i, ret_eff_nodata):
                         ret_eff_i = 0.0
-                    if ret_eff_i <= fp.flow_val:
-                        eff_val = fp.flow_val
+                    if ret_eff_i <= fp.ret_eff:
+                        eff_val = fp.ret_eff
                     else:
-                        eff_val = fp.flow_val * s_i + ret_eff_i * (1 - s_i)
+                        eff_val = fp.ret_eff * s_i + ret_eff_i * (1 - s_i)
                     downstream_retention_managed_raster.set(
                         xi_n, yi_n, eff_val)
                     flow_stack.push(FlowPixel(0, xi_n, yi_n, eff_val))

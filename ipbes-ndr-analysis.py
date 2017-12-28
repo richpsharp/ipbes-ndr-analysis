@@ -15,6 +15,9 @@ from osgeo import osr
 import pygeoprocessing
 import pygeoprocessing.routing
 
+import pyximport; pyximport.install()
+import ipbes_ndr_analysis_cython
+
 N_CPUS = 10
 NODATA = -1
 FLOW_THRESHOLD = 1000

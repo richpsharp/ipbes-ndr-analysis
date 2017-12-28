@@ -18,9 +18,10 @@ import pygeoprocessing.routing
 import pyximport; pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 10
+N_CPUS = -1
 NODATA = -1
 FLOW_THRESHOLD = 1000
+RET_LEN = 150.0
 
 logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
@@ -335,27 +336,27 @@ def main():
 
     # fill and route dem
     filled_watershed_dem_path = '%s_filled.tif' % ws_prefix
-    flow_dir_watershed_dem_path = '%s_flow_dir.tif' % ws_prefix
+    flow_dir_path = '%s_flow_dir.tif' % ws_prefix
     fill_pits_task = task_graph.add_task(
         func=pygeoprocessing.routing.fill_pits,
         args=(
             (path_task_id_map['dem'][0], 1), filled_watershed_dem_path,
-            flow_dir_watershed_dem_path),
+            flow_dir_path),
         kwargs={'temp_dir_path': ws_working_dir},
         target_path_list=[
-            filled_watershed_dem_path, flow_dir_watershed_dem_path],
+            filled_watershed_dem_path, flow_dir_path],
         dependent_task_list=[path_task_id_map['dem'][1]],
         task_name='fill_pits_task_%s' % ws_prefix)
 
     # flow accum dem
-    flow_accum_watershed_dem_path = os.path.join(
+    flow_accum_path = os.path.join(
         ws_working_dir, '%s_flow_accum.tif' % ws_prefix)
-    flow_accmulation_task = task_graph.add_task(
+    flow_accum_task = task_graph.add_task(
         func=pygeoprocessing.routing.flow_accmulation,
         args=(
-            (flow_dir_watershed_dem_path, 1), flow_accum_watershed_dem_path),
+            (flow_dir_path, 1), flow_accum_path),
         kwargs={'temp_dir_path': ws_working_dir},
-        target_path_list=[flow_accum_watershed_dem_path],
+        target_path_list=[flow_accum_path],
         dependent_task_list=[fill_pits_task],
         task_name='flow_accmulation_%s' % ws_prefix)
 
@@ -425,7 +426,7 @@ def main():
     slope_accmulation_task = task_graph.add_task(
         func=pygeoprocessing.routing.flow_accmulation,
         args=(
-            (flow_dir_watershed_dem_path, 1), slope_accum_watershed_dem_path),
+            (flow_dir_path, 1), slope_accum_watershed_dem_path),
         kwargs={
             'temp_dir_path': ws_working_dir,
             'weight_raster_path_band': (clamp_slope_raster_path, 1)},
@@ -437,9 +438,9 @@ def main():
     d_up_task = task_graph.add_task(
         func=DUpOp(
             utm_pixel_size**2, slope_accum_watershed_dem_path,
-            flow_accum_watershed_dem_path, d_up_raster_path),
+            flow_accum_path, d_up_raster_path),
         target_path_list=[d_up_raster_path],
-        dependent_task_list=[slope_accmulation_task, flow_accmulation_task],
+        dependent_task_list=[slope_accmulation_task, flow_accum_task],
         task_name='d_up_%s' % ws_prefix)
 
     # calculate flow path in pixels length down to stream
@@ -448,12 +449,12 @@ def main():
     downstream_flow_length_task = task_graph.add_task(
         func=pygeoprocessing.routing.downstream_flow_length,
         args=(
-            (flow_dir_watershed_dem_path, 1),
-            (flow_accum_watershed_dem_path, 1), FLOW_THRESHOLD,
+            (flow_dir_path, 1),
+            (flow_accum_path, 1), FLOW_THRESHOLD,
             pixel_flow_length_raster_path),
         kwargs={'temp_dir_path': ws_working_dir},
         target_path_list=[pixel_flow_length_raster_path],
-        dependent_task_list=[fill_pits_task, flow_accmulation_task],
+        dependent_task_list=[fill_pits_task, flow_accum_task],
         task_name='downstream_pixel_flow_length_%s' % ws_prefix)
 
     # calculate real flow_path (flow length * pixel size)
@@ -487,8 +488,8 @@ def main():
     d_dn_task = task_graph.add_task(
         func=pygeoprocessing.routing.downstream_flow_length,
         args=(
-            (flow_dir_watershed_dem_path, 1),
-            (flow_accum_watershed_dem_path, 1), FLOW_THRESHOLD,
+            (flow_dir_path, 1),
+            (flow_accum_path, 1), FLOW_THRESHOLD,
             d_dn_raster_path),
         kwargs={
             'temp_dir_path': ws_working_dir,
@@ -496,7 +497,7 @@ def main():
             },
         target_path_list=[d_dn_raster_path],
         dependent_task_list=[
-            fill_pits_task, flow_accmulation_task, d_dn_per_pixel_task],
+            fill_pits_task, flow_accum_task, d_dn_per_pixel_task],
         task_name='d_dn_%s' % ws_prefix)
 
     # calculate IC
@@ -511,9 +512,19 @@ def main():
 
     # calculate IC0
 
-    # calculate s_i
-
     # calculate eff_i
+    downstream_retention_path = os.path.join(
+        ws_working_dir, '%s_downstream_retention.tif' % ws_prefix)
+    downstream_retention_task = task_graph.add_task(
+        func=ipbes_ndr_analysis_cython.calculate_downstream_retention,
+        args=(
+            (flow_dir_path, 1), (flow_accum_path, 1), (eff_n_raster_path, 1),
+            FLOW_THRESHOLD, RET_LEN, downstream_retention_path),
+        kwargs={'temp_dir_path': ws_working_dir},
+        target_path_list=[downstream_retention_path],
+        dependent_task_list=[
+            fill_pits_task, flow_accum_task, reclassify_eff_n_task],
+        task_name='downstream_retention_%s' % ws_prefix)
 
     # calculate NDR specific values
 

@@ -216,7 +216,6 @@ def main():
 
     dem_pixel_size = pygeoprocessing.get_raster_info(
         dem_path_list[0])['pixel_size']
-    dem_pixel_area = dem_pixel_size[0] ** 2
 
     dem_path_index_map_path = os.path.join(
         TARGET_WORKSPACE, 'dem_path_index_map.dat')
@@ -423,7 +422,7 @@ def main():
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
     d_up_task = task_graph.add_task(
         func=DUpOp(
-            dem_pixel_area, slope_accum_watershed_dem_path,
+            utm_pixel_size**2, slope_accum_watershed_dem_path,
             flow_accum_watershed_dem_path, d_up_raster_path),
         target_path_list=[d_up_raster_path],
         dependent_task_list=[slope_accmulation_task, flow_accmulation_task],
@@ -448,7 +447,7 @@ def main():
         ws_working_dir, '%s_m_flow_length.tif' % ws_prefix)
     downstream_flow_distance_task = task_graph.add_task(
         func=MultByScalar(
-            (pixel_flow_length_raster_path, 1), dem_pixel_size[0], NODATA,
+            (pixel_flow_length_raster_path, 1), utm_pixel_size, NODATA,
             downstream_flow_distance_path),
         target_path_list=[downstream_flow_distance_path],
         dependent_task_list=[downstream_flow_length_task],

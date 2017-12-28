@@ -17,11 +17,8 @@ from libc.math cimport exp
 from libc.stdlib cimport malloc
 from libc.stdlib cimport free
 from libcpp.list cimport list
-from libcpp.map cimport map
 from libcpp.pair cimport pair
-from libcpp.queue cimport queue
 from libcpp.stack cimport stack
-from libcpp.vector cimport vector
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8

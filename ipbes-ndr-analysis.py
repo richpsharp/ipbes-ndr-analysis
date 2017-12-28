@@ -18,8 +18,9 @@ import pygeoprocessing.routing
 import pyximport; pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 0
 NODATA = -1
+IC_NODATA = -9999
 FLOW_THRESHOLD = 1000
 RET_LEN = 150.0
 K_VAL = 1.0
@@ -98,11 +99,11 @@ class ClampOp(taskgraph.EncapsulatedTaskOp):
             gdal.GDT_Float64, nodata)
 
 
-def calculate_ndr(downstream_retention_path, ic_path, k_val, target_ndr_path):
+def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
     """Calculate NDR raster.
 
     Parameters:
-        downstream_retention_path (string): path to downstream retention
+        downstream_ret_eff_path (string): path to downstream retention
             raster.
         ic_path (string): path to IC raster
         k_val (float): value of k in Eq. 4.
@@ -114,7 +115,22 @@ def calculate_ndr(downstream_retention_path, ic_path, k_val, target_ndr_path):
     # calculate ic_0
     ic_raster = gdal.Open(ic_path)
     ic_min, ic_max, _, _ = ic_raster.GetRasterBand(1).GetStatistics(0, 1)
-    print ic_min, ic_max
+    ic_0 = (ic_max + ic_min) / 2.0
+
+    def ndr_op(downstream_ret_eff_array, ic_array):
+        """Calculate NDR from Eq. (4)."""
+        result = numpy.empty_like(downstream_ret_eff_array)
+        result[:] = NODATA
+        valid_mask = (
+            downstream_ret_eff_array != NODATA) & (ic_array != IC_NODATA)
+        result[valid_mask] = (1 - downstream_ret_eff_array[valid_mask]) / (
+            1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [(downstream_ret_eff_path, 1), (ic_path, 1)], ndr_op, target_ndr_path,
+        gdal.GDT_Float64, NODATA)
+
 
 def calc_ic(d_up_array, d_dn_array):
     """Calculate log_10(d_up/d_dn) unless nodata or 0."""
@@ -524,32 +540,32 @@ def main():
     ic_task = task_graph.add_task(
         func=pygeoprocessing.raster_calculator,
         args=([(d_up_raster_path, 1), (d_dn_raster_path, 1)],
-            calc_ic, ic_path, gdal.GDT_Float64, NODATA),
+            calc_ic, ic_path, gdal.GDT_Float64, IC_NODATA),
         target_path_list=[ic_path],
         dependent_task_list=[d_up_task, d_dn_task],
         task_name='ic_%s' % ws_prefix)
 
     # calculate eff_i
-    downstream_retention_path = os.path.join(
-        ws_working_dir, '%s_downstream_retention.tif' % ws_prefix)
-    downstream_retention_task = task_graph.add_task(
-        func=ipbes_ndr_analysis_cython.calculate_downstream_retention,
+    downstream_ret_eff_path = os.path.join(
+        ws_working_dir, '%s_downstream_ret_eff.tif' % ws_prefix)
+    downstream_ret_eff_task = task_graph.add_task(
+        func=ipbes_ndr_analysis_cython.calculate_downstream_ret_eff,
         args=(
             (flow_dir_path, 1), (flow_accum_path, 1), (eff_n_raster_path, 1),
-            FLOW_THRESHOLD, RET_LEN, downstream_retention_path),
+            FLOW_THRESHOLD, RET_LEN, downstream_ret_eff_path),
         kwargs={'temp_dir_path': ws_working_dir},
-        target_path_list=[downstream_retention_path],
+        target_path_list=[downstream_ret_eff_path],
         dependent_task_list=[
             fill_pits_task, flow_accum_task, reclassify_eff_n_task],
-        task_name='downstream_retention_%s' % ws_prefix)
+        task_name='downstream_ret_eff_%s' % ws_prefix)
 
     # calculate NDR specific values
     ndr_path = os.path.join(ws_working_dir, '%s_ndr.tif' % ws_prefix)
     ndr_task = task_graph.add_task(
         func=calculate_ndr,
-        args=(downstream_retention_path, ic_path, K_VAL, ndr_path),
+        args=(downstream_ret_eff_path, ic_path, K_VAL, ndr_path),
         target_path_list=[ndr_path],
-        dependent_task_list=[downstream_retention_task, ic_task],
+        dependent_task_list=[downstream_ret_eff_task, ic_task],
         task_name='ndr_task_%s' % ws_prefix)
 
     # TODO: make results part of precip or lulc name for each scenario?

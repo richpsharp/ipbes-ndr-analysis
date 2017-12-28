@@ -298,7 +298,7 @@ cdef class ManagedRaster:
             raster = None
 
 
-def calculate_downstream_retention(
+def calculate_downstream_ret_eff(
         flow_dir_raster_path_band, flow_accum_raster_path_band,
         ret_eff_raster_path_band, double flow_threshold, double ret_len,
         target_downstream_retention_raster_path, temp_dir_path=None):

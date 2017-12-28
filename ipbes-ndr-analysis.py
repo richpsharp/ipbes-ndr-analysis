@@ -83,6 +83,41 @@ def mult_arrays(*array_list):
     result[valid_mask] = numpy.prod(valid_stack, axis=0)
     return result
 
+
+def div_arrays(num_array, denom_array):
+    """Calculate num / denom except when denom = 0 or nodata."""
+    result = numpy.empty_like(num_array)
+    result[:] = NODATA
+    valid_mask = (
+        (num_array != NODATA) & (denom_array != NODATA) & (denom_array != 0))
+    result[valid_mask] = num_array[valid_mask] / denom_array[valid_mask]
+    return result
+
+
+class MultByScalar(taskgraph.EncapsulatedTaskOp):
+    """Multiply raster by a scalar, ignore nodata."""
+    def __init__(self, raster_path_band, scalar, target_nodata, target_path):
+        super(MultByScalar, self).__init__()
+        self.raster_path_band = raster_path_band
+        self.scalar = scalar
+        self.target_nodata = target_nodata
+        self.target_path = target_path
+
+    def __call__(self):
+        nodata = pygeoprocessing.get_raster_info(
+            self.raster_path_band[0])['nodata'][self.raster_path_band[1]-1]
+
+        def mult_by_scalar(array):
+            result = numpy.empty_like(array)
+            result[:] = self.target_nodata
+            valid_mask = array != nodata
+            result[valid_mask] = array[valid_mask] * self.scalar
+            return result
+
+        pygeoprocessing.raster_calculator(
+            [self.raster_path_band], mult_by_scalar, self.target_path,
+            gdal.GDT_Float64, self.target_nodata)
+
 class DUpOp(taskgraph.EncapsulatedTaskOp):
     """Calculate D_up from Equation 7 of NDR user's guide.
 
@@ -328,12 +363,12 @@ def main():
         task_name='modified_load_%s' % ws_prefix)
 
     # calculate slope
-    target_slope_path = os.path.join(
+    slope_raster_path = os.path.join(
         ws_working_dir, '%s_slope.tif' % ws_prefix)
     calculate_slope_task = task_graph.add_task(
         func=pygeoprocessing.routing.calculate_slope,
-        args=((path_task_id_map['dem'][0], 1), target_slope_path),
-        target_path_list=[target_slope_path],
+        args=((path_task_id_map['dem'][0], 1), slope_raster_path),
+        target_path_list=[slope_raster_path],
         dependent_task_list=[path_task_id_map['dem'][1]],
         task_name='calculate_slope_%s' % ws_prefix)
 
@@ -346,7 +381,7 @@ def main():
             (flow_dir_watershed_dem_path, 1), slope_accum_watershed_dem_path),
         kwargs={
             'temp_dir_path': ws_working_dir,
-            'weight_raster_band_path': (target_slope_path, 1)},
+            'weight_raster_path_band': (slope_raster_path, 1)},
         target_path_list=[slope_accum_watershed_dem_path],
         dependent_task_list=[fill_pits_task, calculate_slope_task],
         task_name='slope_accmulation_%s' % ws_prefix)
@@ -360,21 +395,62 @@ def main():
         dependent_task_list=[slope_accmulation_task, flow_accmulation_task],
         task_name='d_up_%s' % ws_prefix)
 
-    # calculate flow path length down to stream
-    target_flow_length_raster_path = os.path.join(
-        ws_working_dir, '%s_flow_length.tif' % ws_prefix)
+    # calculate flow path in pixels length down to stream
+    pixel_flow_length_raster_path = os.path.join(
+        ws_working_dir, '%s_pixel_flow_length.tif' % ws_prefix)
     downstream_flow_length_task = task_graph.add_task(
         func=pygeoprocessing.routing.downstream_flow_length,
         args=(
             (flow_dir_watershed_dem_path, 1),
             (flow_accum_watershed_dem_path, 1), FLOW_THRESHOLD,
-            target_flow_length_raster_path),
+            pixel_flow_length_raster_path),
         kwargs={'temp_dir_path': ws_working_dir},
-        target_path_list=[target_flow_length_raster_path],
+        target_path_list=[pixel_flow_length_raster_path],
         dependent_task_list=[fill_pits_task, flow_accmulation_task],
-        task_name='downstream_flow_length_%s' % ws_prefix)
+        task_name='downstream_pixel_flow_length_%s' % ws_prefix)
 
-    # calculate D_dn
+    # calculate real flow_path (flow length * pixel size)
+    downstream_flow_distance_path = os.path.join(
+        ws_working_dir, '%s_m_flow_length.tif' % ws_prefix)
+    downstream_flow_distance_task = task_graph.add_task(
+        func=MultByScalar(
+            (pixel_flow_length_raster_path, 1), dem_pixel_size[0], NODATA,
+            downstream_flow_distance_path),
+        target_path_list=[downstream_flow_distance_path],
+        dependent_task_list=[downstream_flow_length_task],
+        task_name='downstream_m_flow_dist_%s' % ws_prefix)
+
+    # calculate downstream distance / downstream slope
+    d_dn_per_pixel_path = os.path.join(
+        ws_working_dir, '%s_d_dn_per_pixel.tif' % ws_prefix)
+    d_dn_per_pixel_task = task_graph.add_task(
+        func=pygeoprocessing.raster_calculator,
+        args=(
+            [(downstream_flow_distance_path, 1),
+             (slope_raster_path, 1)],
+            div_arrays, d_dn_per_pixel_path, gdal.GDT_Float64, NODATA),
+        target_path_list=[d_dn_per_pixel_path],
+        dependent_task_list=[
+            downstream_flow_distance_task, calculate_slope_task],
+        task_name='d_dn_per_pixel_%s' % ws_prefix)
+
+    # calculate D_dn: downstream sum of distance / downstream slope
+    d_dn_raster_path = os.path.join(
+        ws_working_dir, '%s_d_dn.tif' % ws_prefix)
+    downstream_flow_length_task = task_graph.add_task(
+        func=pygeoprocessing.routing.downstream_flow_length,
+        args=(
+            (flow_dir_watershed_dem_path, 1),
+            (flow_accum_watershed_dem_path, 1), FLOW_THRESHOLD,
+            d_dn_raster_path),
+        kwargs={
+            'temp_dir_path': ws_working_dir,
+            'weight_raster_path_band': (d_dn_per_pixel_path, 1)
+            },
+        target_path_list=[d_dn_raster_path],
+        dependent_task_list=[
+            fill_pits_task, flow_accmulation_task, d_dn_per_pixel_task],
+        task_name='d_dn_%s' % ws_prefix)
 
     # calculate NDR specific values
 

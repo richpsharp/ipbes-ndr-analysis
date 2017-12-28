@@ -69,6 +69,28 @@ def length_of_degree(lat, lng):
     return max(latlen, longlen)
 
 
+def threshold_slope_op(threshold_val):
+    def _threshold_slope(slope_array):
+        result = numpy.empty_like(slope_array)
+        result[:] = slope_array
+        threshold_mask = (slope_array >= 0) & (slope_array <= threshold_val)
+        result[threshold_mask] = threshold_val
+        return result
+    return _threshold_slope
+
+def calc_ic(d_up_array, d_dn_array):
+    """Calculate log_10(d_up/d_dn) unless nodata or 0."""
+    result = numpy.empty_like(d_up_array)
+    result[:] = NODATA
+    zero_mask = d_dn_array == 0
+    valid_mask = (
+        (d_up_array != NODATA) & (d_dn_array != NODATA) & (~zero_mask))
+    result[valid_mask] = numpy.log10(
+        d_up_array[valid_mask] / d_dn_array[valid_mask])
+    result[zero_mask] = 0.0
+    return result
+
+
 def mult_arrays(*array_list):
     """Multiply arrays in array list but block out stacks with NODATA."""
     stack = numpy.stack(array_list)
@@ -372,6 +394,18 @@ def main():
         dependent_task_list=[path_task_id_map['dem'][1]],
         task_name='calculate_slope_%s' % ws_prefix)
 
+    threshold_slope_raster_path = os.path.join(
+        ws_working_dir, '%s_threshold_slope.tif' % ws_prefix)
+    threshold_slope_task = task_graph.add_task(
+        func=pygeoprocessing.raster_calculator,
+        args=(
+            [(slope_raster_path, 1)], threshold_slope_op(0.005),
+            threshold_slope_raster_path, gdal.GDT_Float64,
+            pygeoprocessing.get_raster_info(slope_raster_path)['nodata'][0]),
+        target_path_list=[threshold_slope_raster_path],
+        dependent_task_list=[calculate_slope_task],
+        task_name='threshold_slope_%s' % ws_prefix)
+
     # calculate D_up
     slope_accum_watershed_dem_path = os.path.join(
         ws_working_dir, '%s_s_accum.tif' % ws_prefix)
@@ -381,9 +415,9 @@ def main():
             (flow_dir_watershed_dem_path, 1), slope_accum_watershed_dem_path),
         kwargs={
             'temp_dir_path': ws_working_dir,
-            'weight_raster_path_band': (slope_raster_path, 1)},
+            'weight_raster_path_band': (threshold_slope_raster_path, 1)},
         target_path_list=[slope_accum_watershed_dem_path],
-        dependent_task_list=[fill_pits_task, calculate_slope_task],
+        dependent_task_list=[fill_pits_task, threshold_slope_task],
         task_name='slope_accmulation_%s' % ws_prefix)
 
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
@@ -427,17 +461,17 @@ def main():
         func=pygeoprocessing.raster_calculator,
         args=(
             [(downstream_flow_distance_path, 1),
-             (slope_raster_path, 1)],
+             (threshold_slope_raster_path, 1)],
             div_arrays, d_dn_per_pixel_path, gdal.GDT_Float64, NODATA),
         target_path_list=[d_dn_per_pixel_path],
         dependent_task_list=[
-            downstream_flow_distance_task, calculate_slope_task],
+            downstream_flow_distance_task, threshold_slope_task],
         task_name='d_dn_per_pixel_%s' % ws_prefix)
 
     # calculate D_dn: downstream sum of distance / downstream slope
     d_dn_raster_path = os.path.join(
         ws_working_dir, '%s_d_dn.tif' % ws_prefix)
-    downstream_flow_length_task = task_graph.add_task(
+    d_dn_task = task_graph.add_task(
         func=pygeoprocessing.routing.downstream_flow_length,
         args=(
             (flow_dir_watershed_dem_path, 1),
@@ -451,6 +485,22 @@ def main():
         dependent_task_list=[
             fill_pits_task, flow_accmulation_task, d_dn_per_pixel_task],
         task_name='d_dn_%s' % ws_prefix)
+
+    # calculate IC
+    ic_path = os.path.join(ws_working_dir, '%s_ic.tif' % ws_prefix)
+    ic_task = task_graph.add_task(
+        func=pygeoprocessing.raster_calculator,
+        args=([(d_up_raster_path, 1), (d_dn_raster_path, 1)],
+            calc_ic, ic_path, gdal.GDT_Float64, NODATA),
+        target_path_list=[ic_path],
+        dependent_task_list=[d_up_task, d_dn_task],
+        task_name='ic_%s' % ws_prefix)
+
+    # calculate IC0
+
+    # calculate s_i
+
+    # calculate eff_i
 
     # calculate NDR specific values
 

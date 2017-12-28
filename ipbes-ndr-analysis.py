@@ -22,6 +22,7 @@ N_CPUS = -1
 NODATA = -1
 FLOW_THRESHOLD = 1000
 RET_LEN = 150.0
+K_VAL = 1.0
 
 logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
@@ -96,6 +97,24 @@ class ClampOp(taskgraph.EncapsulatedTaskOp):
             [self.raster_path_band], clamp_op, self.target_path,
             gdal.GDT_Float64, nodata)
 
+
+def calculate_ndr(downstream_retention_path, ic_path, k_val, target_ndr_path):
+    """Calculate NDR raster.
+
+    Parameters:
+        downstream_retention_path (string): path to downstream retention
+            raster.
+        ic_path (string): path to IC raster
+        k_val (float): value of k in Eq. 4.
+        target_ndr_path (string): path to NDR raster calculated by this func.
+
+    Returns:
+        None.
+    """
+    # calculate ic_0
+    ic_raster = gdal.Open(ic_path)
+    ic_min, ic_max, _, _ = ic_raster.GetRasterBand(1).GetStatistics(0, 1)
+    print ic_min, ic_max
 
 def calc_ic(d_up_array, d_dn_array):
     """Calculate log_10(d_up/d_dn) unless nodata or 0."""
@@ -510,8 +529,6 @@ def main():
         dependent_task_list=[d_up_task, d_dn_task],
         task_name='ic_%s' % ws_prefix)
 
-    # calculate IC0
-
     # calculate eff_i
     downstream_retention_path = os.path.join(
         ws_working_dir, '%s_downstream_retention.tif' % ws_prefix)
@@ -527,6 +544,13 @@ def main():
         task_name='downstream_retention_%s' % ws_prefix)
 
     # calculate NDR specific values
+    ndr_path = os.path.join(ws_working_dir, '%s_ndr.tif' % ws_prefix)
+    ndr_task = task_graph.add_task(
+        func=calculate_ndr,
+        args=(downstream_retention_path, ic_path, K_VAL, ndr_path),
+        target_path_list=[ndr_path],
+        dependent_task_list=[downstream_retention_task, ic_task],
+        task_name='ndr_task_%s' % ws_prefix)
 
     # TODO: make results part of precip or lulc name for each scenario?
 

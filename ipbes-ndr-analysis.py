@@ -15,7 +15,7 @@ from osgeo import osr
 import pygeoprocessing
 import pygeoprocessing.routing
 
-N_CPUS = -1
+N_CPUS = 10
 NODATA = -1
 FLOW_THRESHOLD = 1000
 
@@ -49,6 +49,7 @@ TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 
 RTREE_PATH = 'dem_rtree'
 
+
 def length_of_degree(lat, lng):
     """Calcualte the length of a degree in meters."""
     m1 = 111132.92
@@ -58,25 +59,39 @@ def length_of_degree(lat, lng):
     p1 = 111412.84
     p2 = -93.5
     p3 = 0.118
-
     lat = -19.7860856226 * math.pi / 180
-
     latlen = (
-        m1 + (m2 * math.cos(2 * lat)) + (m3 * math.cos(4 * lat)) + (m4 * math.cos(6 * lat)))
+        m1 + m2 * math.cos(2 * lat) + m3 * math.cos(4 * lat) +
+        m4 * math.cos(6 * lat))
     longlen = abs(
-        (p1 * math.cos(lat)) + (p2 * math.cos(3 * lat)) + (p3 * math.cos(5 * lat)))
-
+        p1 * math.cos(lat) + p2 * math.cos(3 * lat) + p3 * math.cos(5 * lat))
     return max(latlen, longlen)
 
 
-def threshold_slope_op(threshold_val):
-    def _threshold_slope(slope_array):
-        result = numpy.empty_like(slope_array)
-        result[:] = slope_array
-        threshold_mask = (slope_array >= 0) & (slope_array <= threshold_val)
-        result[threshold_mask] = threshold_val
-        return result
-    return _threshold_slope
+class ClampOp(taskgraph.EncapsulatedTaskOp):
+    """Clamp non-nodata values to be >= threshold_val."""
+    def __init__(self, raster_path_band, threshold_val, target_path):
+        super(ClampOp, self).__init__()
+        self.raster_path_band = raster_path_band
+        self.threshold_val = threshold_val
+        self.target_path = target_path
+
+    def __call__(self):
+        nodata = pygeoprocessing.get_raster_info(
+            self.raster_path_band[0])['nodata'][self.raster_path_band[1]-1]
+
+        def clamp_op(array):
+            """Clamp non-nodata in array to >= threshold_val."""
+            result = numpy.empty_like(array)
+            result[:] = array
+            threshold_mask = (array != nodata) & (array <= self.threshold_val)
+            result[threshold_mask] = self.threshold_val
+            return result
+
+        pygeoprocessing.raster_calculator(
+            [self.raster_path_band], clamp_op, self.target_path,
+            gdal.GDT_Float64, nodata)
+
 
 def calc_ic(d_up_array, d_dn_array):
     """Calculate log_10(d_up/d_dn) unless nodata or 0."""
@@ -94,13 +109,12 @@ def calc_ic(d_up_array, d_dn_array):
 def mult_arrays(*array_list):
     """Multiply arrays in array list but block out stacks with NODATA."""
     stack = numpy.stack(array_list)
-    valid_mask = (
-        numpy.bitwise_and.reduce(stack != NODATA, axis=0))
+    valid_mask = (numpy.bitwise_and.reduce(stack != NODATA, axis=0))
     n_valid = numpy.count_nonzero(valid_mask)
     broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
     valid_stack = stack[broadcast_valid_mask].reshape(
         len(array_list), n_valid)
-    result = numpy.empty(array_list[0].shape, dtype=numpy.float32)
+    result = numpy.empty(array_list[0].shape, dtype=numpy.float64)
     result[:] = NODATA
     result[valid_mask] = numpy.prod(valid_stack, axis=0)
     return result
@@ -351,7 +365,7 @@ def main():
         func=pygeoprocessing.reclassify_raster,
         args=(
             (path_task_id_map['landcover'][0], 1), eff_n_lucode_map,
-            eff_n_raster_path, gdal.GDT_Float32, NODATA),
+            eff_n_raster_path, gdal.GDT_Float64, NODATA),
         target_path_list=[eff_n_raster_path],
         dependent_task_list=[path_task_id_map['landcover'][1]],
         task_name='reclasify_eff_n_%s' % ws_prefix)
@@ -365,7 +379,7 @@ def main():
         func=pygeoprocessing.reclassify_raster,
         args=(
             (path_task_id_map['landcover'][0], 1), load_n_lucode_map,
-            load_n_raster_path, gdal.GDT_Float32, NODATA),
+            load_n_raster_path, gdal.GDT_Float64, NODATA),
         target_path_list=[load_n_raster_path],
         dependent_task_list=[path_task_id_map['landcover'][1]],
         task_name='reclasify_load_n_%s' % ws_prefix)
@@ -377,7 +391,7 @@ def main():
         func=pygeoprocessing.raster_calculator,
         args=(
             [(load_n_raster_path, 1), (path_task_id_map['precip'][0], 1)],
-            mult_arrays, modified_load_raster_path, gdal.GDT_Float32, NODATA),
+            mult_arrays, modified_load_raster_path, gdal.GDT_Float64, NODATA),
         target_path_list=[modified_load_raster_path],
         dependent_task_list=[
             reclassify_load_n_task, path_task_id_map['precip'][1]],
@@ -393,17 +407,14 @@ def main():
         dependent_task_list=[path_task_id_map['dem'][1]],
         task_name='calculate_slope_%s' % ws_prefix)
 
-    threshold_slope_raster_path = os.path.join(
-        ws_working_dir, '%s_threshold_slope.tif' % ws_prefix)
-    threshold_slope_task = task_graph.add_task(
-        func=pygeoprocessing.raster_calculator,
-        args=(
-            [(slope_raster_path, 1)], threshold_slope_op(0.005),
-            threshold_slope_raster_path, gdal.GDT_Float64,
-            pygeoprocessing.get_raster_info(slope_raster_path)['nodata'][0]),
-        target_path_list=[threshold_slope_raster_path],
+    clamp_slope_raster_path = os.path.join(
+        ws_working_dir, '%s_clamp_slope.tif' % ws_prefix)
+    clamp_slope_task = task_graph.add_task(
+        func=ClampOp(
+            (slope_raster_path, 1), 0.005, clamp_slope_raster_path),
+        target_path_list=[clamp_slope_raster_path],
         dependent_task_list=[calculate_slope_task],
-        task_name='threshold_slope_%s' % ws_prefix)
+        task_name='clamp_slope_%s' % ws_prefix)
 
     # calculate D_up
     slope_accum_watershed_dem_path = os.path.join(
@@ -414,9 +425,9 @@ def main():
             (flow_dir_watershed_dem_path, 1), slope_accum_watershed_dem_path),
         kwargs={
             'temp_dir_path': ws_working_dir,
-            'weight_raster_path_band': (threshold_slope_raster_path, 1)},
+            'weight_raster_path_band': (clamp_slope_raster_path, 1)},
         target_path_list=[slope_accum_watershed_dem_path],
-        dependent_task_list=[fill_pits_task, threshold_slope_task],
+        dependent_task_list=[fill_pits_task, clamp_slope_task],
         task_name='slope_accmulation_%s' % ws_prefix)
 
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
@@ -460,11 +471,11 @@ def main():
         func=pygeoprocessing.raster_calculator,
         args=(
             [(downstream_flow_distance_path, 1),
-             (threshold_slope_raster_path, 1)],
+             (clamp_slope_raster_path, 1)],
             div_arrays, d_dn_per_pixel_path, gdal.GDT_Float64, NODATA),
         target_path_list=[d_dn_per_pixel_path],
         dependent_task_list=[
-            downstream_flow_distance_task, threshold_slope_task],
+            downstream_flow_distance_task, clamp_slope_task],
         task_name='d_dn_per_pixel_%s' % ws_prefix)
 
     # calculate D_dn: downstream sum of distance / downstream slope

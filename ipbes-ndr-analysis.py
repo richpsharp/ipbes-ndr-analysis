@@ -18,9 +18,10 @@ import pygeoprocessing.routing
 import pyximport; pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 0
+N_CPUS = -1
 NODATA = -1
 IC_NODATA = -9999
+USE_AG_LOAD_ID = 999
 FLOW_THRESHOLD = 1000
 RET_LEN = 150.0
 K_VAL = 1.0
@@ -99,6 +100,89 @@ class ClampOp(taskgraph.EncapsulatedTaskOp):
             gdal.GDT_Float64, nodata)
 
 
+def aggregate_to_database(
+        n_export_raster_path, global_watershed_path, global_watershed_id,
+        local_watershed_path, ws_prefix, scenario_key, aggregate_field_name,
+        target_database_path):
+    """Aggregate nutrient load and save to database.
+
+    This function creates a new database if it does not exist and aggregates
+        values and inserts a new row if the row does not already exist.
+
+    Parameters:
+        n_export_raster_path (string): path to nutrient export raster.
+        global_watershed_path (string): path to global shapefile where
+            `feature_id` is an element. This lets us save the geometry to
+            the database.
+        global_watershed_id (int): feature id in global watershed that's
+            represented in the local watershed.
+        local_watershed_path (string): path to a locally projected shapefile
+            with the local watershed. This is used for aggregation.
+        ws_prefix (string): used to insert in databases
+        scenario_key (string): used to insert in database
+        aggregate_field_name (string): unique key in local watershed feature
+        target_database_path (string): path to SQLite Database. If not exists
+            create a table called 'nutrient_export' with fields:
+                * ws_prefix_key (string identifying unique global watershed)
+                * scenario_key (string identifying which scenario)
+                * total_export (float indicating total export from watershed)
+                * geometry (geometry saved as Wkt)
+
+    Returns:
+        None.
+    """
+    sql_create_projects_table = (
+        """ CREATE TABLE IF NOT EXISTS nutrient_export (
+            ws_prefix_key TEXT NOT NULL,
+            scenario_key TEXT NOT NULL,
+            total_export REAL NOT NULL,
+            geometry_wkt TEXT NOT NULL,
+            PRIMARY KEY (ws_prefix_key, scenario_key)
+        ); """)
+
+    # create a database connection
+    conn = sqlite3.connect(target_database_path)
+    if conn is not None:
+        cursor = conn.cursor()
+        cursor.execute(sql_create_projects_table)
+        cursor.execute("""CREATE INDEX IF NOT EXISTS idx_nutrient_export
+            ON nutrient_export (ws_prefix_key, scenario_key);""")
+
+        cursor.execute(
+            """SELECT ws_prefix_key, scenario_key FROM nutrient_export
+            WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
+                ws_prefix, scenario_key))
+        if cursor.fetchone() is not None:
+            # already in table, skipping
+            return
+
+        # TODO: aggregate value over polygon
+        result = pygeoprocessing.zonal_statistics(
+            (n_export_raster_path, 1), local_watershed_path,
+            aggregate_field_name, polygons_might_overlap=False)
+
+        LOGGER.debug(result)
+        LOGGER.debug(total_export)
+        total_export = result.itervalues().next()['sum']
+
+        global_watershed_vector = ogr.Open(global_watershed_path)
+        global_watershed_layer = global_watershed_vector.GetLayer()
+        global_watershed_feature = global_watershed_layer.GetFeature(
+            global_watershed_id)
+        global_watershed_geom = global_watershed_feature.GetGeometryRef()
+        geometry_wkt = global_watershed_geom.ExportToWkt()
+        global_watershed_geom = None
+        global_watershed_feature = None
+        global_watershed_layer = None
+        global_watershed_vector = None
+        cursor.execute(
+            """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
+            (ws_prefix, scenario_key, total_export, geometry_wkt))
+        conn.commit()
+    else:
+        raise IOError(
+            "Error! cannot create the database connection.")
+
 def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
     """Calculate NDR raster.
 
@@ -138,23 +222,24 @@ def calculate_ag_load(
     """Add the agricultural load onto the base load.
 
     Parameters:
-        load_n_raster_path (string): path to a base load raster with "999"
-            where the pixel should be replaced with the managed ag load.
+        load_n_raster_path (string): path to a base load raster with
+            `USE_AG_LOAD_ID` where the pixel should be replaced with the
+            managed ag load.
         management_raster_path (string): path to a raster that indicates
             what proportion of pixel is c3
         load_raster_path (string): says what load should be at pixel.
         target_ag_load_path (string): generated raster that has the base
-            values from `load_n_raster_path` but with the 999s replaced by
-                "weighted average of (state_i * fertapplication_i)
+            values from `load_n_raster_path` but with the USE_AG_LOAD_IDs
+            replaced by "weighted average of (state_i * fertapplication_i)
                 for i in ['c3ann', '...'] / sum(state_i)" - from design doc.
 
     Returns:
         None.
     """
     def ag_load_op(base_load_n_array, management_array, ag_load_array):
-        """raster calculator replace 999 with ag loads."""
+        """raster calculator replace USE_AG_LOAD_ID with ag loads."""
         result = numpy.copy(base_load_n_array)
-        ag_mask = result == 999
+        ag_mask = result == USE_AG_LOAD_ID
         result[ag_mask] = management_array[ag_mask] * ag_load_array[ag_mask]
         return result
 
@@ -288,12 +373,15 @@ def main():
         represenative_ndr_biophysical_table_path)
     # clean up biophysical table
     biophysical_table = biophysical_table.fillna(0)
-    biophysical_table[biophysical_table['load_n'] == 'use raster'] = 0.0
+    biophysical_table[biophysical_table['load_n'] == 'use raster'] = (
+        USE_AG_LOAD_ID)
     biophysical_table['load_n'] = biophysical_table['load_n'].apply(
         pandas.to_numeric)
 
     task_graph = taskgraph.TaskGraph(
         TASKGRAPH_DIR, N_CPUS)
+
+    database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
 
     dem_rtree_path = os.path.join(TARGET_WORKSPACE, RTREE_PATH)
 
@@ -314,12 +402,12 @@ def main():
             dem_path_index_map_path],
         task_name='build_dem_rtree')
 
-    watershed_path = r"C:\Users\Rich\Dropbox\ipbes-data\watersheds_globe_HydroSHEDS_15arcseconds\af_bas_15s_beta.shp"
-    watershed_vector = ogr.Open(watershed_path)
+    global_watershed_path = r"C:\Users\Rich\Dropbox\ipbes-data\watersheds_globe_HydroSHEDS_15arcseconds\af_bas_15s_beta.shp"
+    watershed_vector = ogr.Open(global_watershed_path)
     watershed_layer = watershed_vector.GetLayer()
 
     watershed_id = 85668
-    watershed_basename = os.path.splitext(os.path.basename(watershed_path))[0]
+    watershed_basename = os.path.splitext(os.path.basename(global_watershed_path))[0]
     ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
     ws_working_dir = os.path.join(
         TARGET_WORKSPACE, "%s_working_dir" % ws_prefix)
@@ -328,7 +416,7 @@ def main():
     merge_watershed_dems_task = task_graph.add_task(
         func=merge_watershed_dems,
         args=(
-            watershed_path, watershed_id, dem_rtree_path,
+            global_watershed_path, watershed_id, dem_rtree_path,
             dem_path_index_map_path, watershed_dem_path),
         target_path_list=[watershed_dem_path],
         dependent_task_list=[build_dem_rtree_task],
@@ -345,6 +433,17 @@ def main():
     epsg_srs.ImportFromEPSG(epsg_code)
     utm_pixel_size = abs(dem_pixel_size[0]) * length_of_degree(
         feature_centroid.GetY(), feature_centroid.GetX())
+
+    local_watershed_path = os.path.join(ws_working_dir, '%s.shp' % ws_prefix)
+    if os.path.exists(local_watershed_path):
+        os.remove(local_watershed_path)
+    reproject_watershed_task = task_graph.add_task(
+        func=reproject_vector_feature,
+        args=(
+            global_watershed_path, epsg_srs.ExportToWkt(), watershed_id,
+            local_watershed_path),
+        target_path_list=[local_watershed_path],
+        task_name='project_watershed_%s' % ws_prefix)
 
     feature_centroid = None
     feature_geom = None
@@ -390,7 +489,8 @@ def main():
         func=pygeoprocessing.align_and_resize_raster_stack,
         args=(
             base_raster_path_list, aligned_path_list,
-            ['nearest', 'nearest', 'mode'], dem_pixel_size, 'intersection'),
+            ['nearest', 'mode', 'nearest', 'nearest', 'nearest', 'nearest'],
+            dem_pixel_size, 'intersection'),
         target_path_list=aligned_path_list,
         dependent_task_list=[merge_watershed_dems_task],
         task_name='align_resize_task_%s' % ws_prefix)
@@ -652,9 +752,14 @@ def main():
             target_path_list=[n_export_raster_path],
             dependent_task_list=[modified_load_task, ndr_task])
 
-        # TODO: aggregate result over watershed
-        # TODO: save to SQLlite (id, scenario_key, export, polygon geometry)
+        aggregate_result_task = task_graph.add_task(
+            func=aggregate_to_database,
+            args=(
+                n_export_raster_path, global_watershed_path, watershed_id,
+                local_watershed_path, ws_prefix, scenario_key, database_path),
+            dependent_task_list=[n_export_task, reproject_watershed_task])
 
+    #TODO: loop over all shapefiles
     task_graph.close()
     task_graph.join()
 
@@ -728,6 +833,102 @@ def build_dem_rtree(dem_path_list, dem_path_index_map_path, dem_rtree_path):
     dem_rtree.close()
     with open(dem_path_index_map_path, 'wb') as f:
         dill.dump(dem_path_index_map, f)
+
+def reproject_vector_feature(
+        base_vector_path, target_wkt, feature_id, target_path):
+    """Reproject a single OGR DataSource feature.
+
+    Transforms the features of the base vector to the desired output
+    projection in a new ESRI Shapefile.
+
+    Parameters:
+        base_vector_path (string): Path to the base shapefile to transform.
+        target_wkt (string): the desired output projection in Well Known Text
+            (by layer.GetSpatialRef().ExportToWkt())
+        feature_id (int): the feature to reproject and copy.
+        target_path (string): the filepath to the transformed shapefile
+
+    Returns:
+        None
+    """
+    base_vector = ogr.Open(base_vector_path)
+
+    # if this file already exists, then remove it
+    if os.path.isfile(target_path):
+        LOGGER.warn(
+            "reproject_vector: %s already exists, removing and overwriting",
+            target_path)
+        os.remove(target_path)
+
+    target_sr = osr.SpatialReference(target_wkt)
+
+    # create a new shapefile from the orginal_datasource
+    target_driver = ogr.GetDriverByName('ESRI Shapefile')
+    target_vector = target_driver.CreateDataSource(target_path)
+
+    layer = base_vector.GetLayer()
+    layer_dfn = layer.GetLayerDefn()
+
+    # Create new layer for target_vector using same name and
+    # geometry type from base vector but new projection
+    target_layer = target_vector.CreateLayer(
+        layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
+
+    # Get the number of fields in original_layer
+    original_field_count = layer_dfn.GetFieldCount()
+
+    # For every field, create a duplicate field in the new layer
+    for fld_index in xrange(original_field_count):
+        original_field = layer_dfn.GetFieldDefn(fld_index)
+        target_field = ogr.FieldDefn(
+            original_field.GetName(), original_field.GetType())
+        target_layer.CreateField(target_field)
+
+    # Get the SR of the original_layer to use in transforming
+    base_sr = layer.GetSpatialRef()
+
+    # Create a coordinate transformation
+    coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
+
+    # Copy all of the features in layer to the new shapefile
+    error_count = 0
+    base_feature = layer.GetFeature(feature_id)
+    geom = base_feature.GetGeometryRef()
+    if geom is None:
+        # we encountered this error occasionally when transforming clipped
+        # global polygons.  Not clear what is happening but perhaps a
+        # feature was retained that otherwise wouldn't have been included
+        # in the clip
+        raise ValueError("Geometry is None.")
+
+    # Transform geometry into format desired for the new projection
+    error_code = geom.Transform(coord_trans)
+    if error_code != 0:  # error
+        # this could be caused by an out of range transformation
+        # whatever the case, don't put the transformed poly into the
+        # output set
+        raise ValueError("Unable to reproject geometry.")
+
+    # Copy original_datasource's feature and set as new shapes feature
+    target_feature = ogr.Feature(target_layer.GetLayerDefn())
+    target_feature.SetGeometry(geom)
+
+    # For all the fields in the feature set the field values from the
+    # source field
+    for fld_index in xrange(target_feature.GetFieldCount()):
+        target_feature.SetField(
+            fld_index, base_feature.GetField(fld_index))
+
+    target_layer.CreateFeature(target_feature)
+    target_feature = None
+    base_feature = None
+    if error_count > 0:
+        LOGGER.warn(
+            '%d features out of %d were unable to be transformed and are'
+            ' not in the output vector at %s', error_count,
+            layer.GetFeatureCount(), target_path)
+    layer = None
+    base_vector = None
 
 if __name__ == '__main__':
     main()

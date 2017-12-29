@@ -101,6 +101,37 @@ class ClampOp(taskgraph.EncapsulatedTaskOp):
             gdal.GDT_Float64, nodata)
 
 
+def calculate_ag_load(
+        load_n_raster_path, ag_load_raster_path, target_ag_load_path):
+    """Add the agricultural load onto the base load.
+
+    Parameters:
+        load_n_raster_path (string): path to a base load raster with
+            `USE_AG_LOAD_ID` where the pixel should be replaced with the
+            managed ag load.
+        ag_load_raster_path (string): path to a raster that indicates
+            what the ag load is at `USE_AG_LOAD_ID` pixels
+        target_ag_load_path (string): generated raster that has the base
+            values from `load_n_raster_path` but with the USE_AG_LOAD_IDs
+            replaced by `ag_load_raster_path`.
+
+    Returns:
+        None.
+    """
+    def ag_load_op(base_load_n_array, ag_load_array):
+        """raster calculator replace USE_AG_LOAD_ID with ag loads."""
+        result = numpy.copy(base_load_n_array)
+        ag_mask = result == USE_AG_LOAD_ID
+        result[ag_mask] = ag_load_array[ag_mask]
+        return result
+
+    nodata = pygeoprocessing.get_raster_info(load_n_raster_path)['nodata'][0]
+
+    pygeoprocessing.raster_calculator(
+        [(load_n_raster_path, 1), (ag_load_raster_path, 1)],
+        ag_load_op, target_ag_load_path,
+        gdal.GDT_Float32, nodata)
+
 def aggregate_to_database(
         n_export_raster_path, global_watershed_path, global_watershed_id,
         local_watershed_path, ws_prefix, scenario_key, aggregate_field_name,
@@ -163,8 +194,8 @@ def aggregate_to_database(
             aggregate_field_name, polygons_might_overlap=False)
 
         LOGGER.debug(result)
-        LOGGER.debug(total_export)
         total_export = result.itervalues().next()['sum']
+        LOGGER.debug(total_export)
 
         global_watershed_vector = ogr.Open(global_watershed_path)
         global_watershed_layer = global_watershed_vector.GetLayer()
@@ -712,21 +743,36 @@ def main():
 
     for scenario_key in ['cur', 'ssp1', 'ssp3', 'ssp5']:
         # calculate modified load (load * precip)
+        # calculate scenario AG load
+        scenario_ag_load_path = os.path.join(
+            ws_working_dir, '%s_%s_ag_load.tif' % (ws_prefix, scenario_key))
+        scenario_load_task = task_graph.add_task(
+            func=calculate_ag_load,
+            args=(
+                load_n_raster_path,
+                path_task_id_map['ag_load_%s' % scenario_key][0],
+                scenario_ag_load_path),
+            target_path_list=[scenario_ag_load_path],
+            dependent_task_list=[
+                reclassify_load_n_task,
+                path_task_id_map['ag_load_%s' % scenario_key][1]],
+            task_name='scenario_load_%s_%s' % (ws_prefix, scenario_key))
+
+        # calculate modified load (load * precip)
         modified_load_raster_path = os.path.join(
             ws_working_dir, '%s_%s_modified_load.tif' % (
                 ws_prefix, scenario_key))
         modified_load_task = task_graph.add_task(
             func=pygeoprocessing.raster_calculator,
             args=(
-                [(path_task_id_map['ag_load_%s' % scenario_key][0], 1),
+                [(scenario_ag_load_path, 1),
                  (path_task_id_map['precip_%s' % scenario_key][0], 1)],
                 mult_arrays, modified_load_raster_path, gdal.GDT_Float64,
                 NODATA),
             target_path_list=[modified_load_raster_path],
             dependent_task_list=[
                 scenario_load_task,
-                path_task_id_map['precip_%s' % scenario_key][1],
-                path_task_id_map['ag_load_%s' % scenario_key][1]],
+                path_task_id_map['precip_%s' % scenario_key][1]],
             task_name='modified_load_%s' % ws_prefix)
 
         n_export_raster_path = os.path.join(
@@ -734,7 +780,7 @@ def main():
         n_export_task = task_graph.add_task(
             func=pygeoprocessing.raster_calculator,
             args=(
-                [(modified_load_raster_path, ndr_path)], mult_arrays,
+                [(modified_load_raster_path, 1), (ndr_path, 1)], mult_arrays,
                 n_export_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[n_export_raster_path],
             dependent_task_list=[modified_load_task, ndr_task])
@@ -743,7 +789,8 @@ def main():
             func=aggregate_to_database,
             args=(
                 n_export_raster_path, global_watershed_path, watershed_id,
-                local_watershed_path, ws_prefix, scenario_key, database_path),
+                local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
+                database_path),
             dependent_task_list=[n_export_task, reproject_watershed_task])
 
     #TODO: loop over all shapefiles

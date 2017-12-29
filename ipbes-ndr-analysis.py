@@ -627,21 +627,30 @@ def main():
 
         # calculate modified load (load * precip)
         modified_load_raster_path = os.path.join(
-            ws_working_dir, '%s_modified_load.tif' % ws_prefix)
+            ws_working_dir, '%s_%s_modified_load.tif' % (
+                ws_prefix, scenario_key))
         modified_load_task = task_graph.add_task(
             func=pygeoprocessing.raster_calculator,
             args=(
                 [(scenario_ag_load_path, 1),
                  (path_task_id_map['precip_%s' % scenario_key][0], 1)],
-                mult_arrays, modified_load_raster_path, gdal.GDT_Float64, NODATA),
+                mult_arrays, modified_load_raster_path, gdal.GDT_Float64,
+                NODATA),
             target_path_list=[modified_load_raster_path],
             dependent_task_list=[
                 scenario_load_task,
                 path_task_id_map['precip_%s' % scenario_key][1]],
             task_name='modified_load_%s' % ws_prefix)
 
-
-    # calculate load * NDR
+        n_export_raster_path = os.path.join(
+            ws_working_dir, '%s_%s_n_export.tif' % (ws_prefix, scenario_key))
+        n_export_task = task_graph.add_task(
+            func=pygeoprocessing.raster_calculator,
+            args=(
+                [(modified_load_raster_path, ndr_path)], mult_arrays,
+                n_export_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[n_export_raster_path],
+            dependent_task_list=[modified_load_task, ndr_task])
 
     # aggregate result over watershed
 

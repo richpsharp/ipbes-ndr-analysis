@@ -1,4 +1,7 @@
 """Script to manage NDR runs for IPBES project."""
+import time
+import datetime
+import threading
 import logging
 import os
 import glob
@@ -21,7 +24,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 5
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -42,12 +45,16 @@ POSSIBLE_DROPBOX_LOCATIONS = [
     r'E:\Dropbox']
 
 LOGGER.info("checking dropbox locations")
-for path in POSSIBLE_DROPBOX_LOCATIONS:
-    print path
-    if os.path.exists(path):
-        BASE_DROPBOX_DIR = path
+for dropbox_path in POSSIBLE_DROPBOX_LOCATIONS:
+    print dropbox_path
+    if os.path.exists(dropbox_path):
+        BASE_DROPBOX_DIR = dropbox_path
         break
 LOGGER.info("found %s", BASE_DROPBOX_DIR)
+
+RESULTS_DIR = os.path.join(
+    BASE_DROPBOX_DIR, 'rps_bck_shared_stuff', 'ipbes stuff',
+    'ipbes_ndr_results')
 
 WATERSHED_PATH_LIST = glob.glob(
     os.path.join(
@@ -58,6 +65,88 @@ TARGET_WORKSPACE = 'ndr_workspace'
 TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 
 RTREE_PATH = 'dem_rtree'
+
+
+def db_to_shapefile(database_path, sleep_time):
+    """Converts db to shapefile every `sleep_time` seconds."""
+    while True:
+        try:
+            target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
+
+            if os.path.exists(target_shapefile_path):
+                os.remove(target_shapefile_path)
+            try:
+                os.makedirs(os.path.dirname(target_shapefile_path))
+            except OSError:
+                pass
+
+            # create a shapefile with these fields:
+            # ws_id (text)
+            # cur_n_exp
+            # ssp1_n_exp
+            # ssp3_n_exp
+            # ssp5_n_exp
+
+            target_sr = osr.SpatialReference()
+            target_sr.ImportFromEPSG(4326)
+
+            driver = ogr.GetDriverByName('ESRI Shapefile')
+            result_vector = driver.CreateDataSource(target_shapefile_path)
+            result_layer = result_vector.CreateLayer(
+                os.path.splitext(os.path.basename(target_shapefile_path))[0],
+                target_sr, ogr.wkbPolygon)
+            ws_field = ogr.FieldDefn("ws_id", ogr.OFTString)
+            ws_field.SetWidth(24)
+            result_layer.CreateField(ws_field)
+
+            scenario_list = ['cur', 'ssp1', 'ssp3', 'ssp5']
+            for scenario in scenario_list:
+                scenario_field = ogr.FieldDefn('%s_n_exp' % scenario, ogr.OFTReal)
+                scenario_field.SetWidth(24)
+                scenario_field.SetPrecision(11)
+                result_layer.CreateField(scenario_field)
+
+            conn = sqlite3.connect(database_path)
+            if conn is not None:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """SELECT ws_prefix_key, geometry_wkt FROM nutrient_export
+                       GROUP BY ws_prefix_key;""")
+                result = cursor.fetchall()
+                for ws_id, ws_geom in result:
+                    feature = ogr.Feature(result_layer.GetLayerDefn())
+                    feature.SetField('ws_id', ws_id)
+                    print ws_id
+                    for scenario in scenario_list:
+                        cursor.execute(
+                            """SELECT total_export FROM nutrient_export
+                            WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
+                                ws_id, scenario))
+                        feature.SetField('%s_n_exp' % scenario, cursor.fetchone()[0])
+                    feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
+                    result_layer.CreateFeature(feature)
+
+            for old_timestamp_file_path in glob.glob(
+                    os.path.join(RESULTS_DIR, '*.txt')):
+                os.remove(old_timestamp_file_path)
+            timestring = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
+            timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
+                timestring))
+            with open(timestamp_path, 'w') as timestamp_file:
+                timestamp_file.write(
+                    "Hi, I'm an automatically generated file.\n"
+                    "I last updated NDR results on %s.\n" % timestring +
+                    "There will be an 'all done.txt' file here when everything "
+                    "is done.\n")
+            result_layer.SyncToDisk()
+            result_layer = None
+            result_vector = None
+        except Exception:
+            LOGGER.exception(
+                "There was an exception during results reporting.")
+        if sleep_time < 0:
+            break
+        time.sleep(sleep_time)
 
 
 def length_of_degree(lat):
@@ -265,18 +354,31 @@ def calc_ic(d_up_array, d_dn_array):
     return result
 
 
-def mult_arrays(*array_list):
-    """Multiply arrays in array list but block out stacks with NODATA."""
-    stack = numpy.stack(array_list)
-    valid_mask = (numpy.bitwise_and.reduce(stack != NODATA, axis=0))
-    n_valid = numpy.count_nonzero(valid_mask)
-    broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
-    valid_stack = stack[broadcast_valid_mask].reshape(
-        len(array_list), n_valid)
-    result = numpy.empty(array_list[0].shape, dtype=numpy.float64)
-    result[:] = NODATA
-    result[valid_mask] = numpy.prod(valid_stack, axis=0)
-    return result
+def mult_arrays(
+        target_raster_path, gdal_type, target_nodata, raster_path_list):
+    """Multiply arrays and be careful of nodata values."""
+    nodata_array = numpy.array([
+        pygeoprocessing.get_raster_info(path)['nodata'][0]
+        for path in raster_path_list])
+
+    def _mult_arrays(*array_list):
+        """Multiply arrays in array list but block out stacks with NODATA."""
+        stack = numpy.stack(array_list)
+        valid_mask = (numpy.bitwise_and.reduce(
+            [~numpy.isclose(nodata, array)
+             for nodata, array in zip(nodata_array, stack)], axis=0))
+        n_valid = numpy.count_nonzero(valid_mask)
+        broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
+        valid_stack = stack[broadcast_valid_mask].reshape(
+            len(array_list), n_valid)
+        result = numpy.empty(array_list[0].shape, dtype=numpy.float64)
+        result[:] = NODATA
+        result[valid_mask] = numpy.prod(valid_stack, axis=0)
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in raster_path_list], _mult_arrays,
+        target_raster_path, gdal_type, target_nodata)
 
 
 def div_arrays(num_array, denom_array):
@@ -366,8 +468,10 @@ def main():
         format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
         level=logging.WARN, datefmt='%m/%d/%Y %H:%M:%S ')
 
-    if not os.path.exists(TARGET_WORKSPACE):
+    try:
         os.makedirs(TARGET_WORKSPACE)
+    except OSError:
+        pass
 
     # load biophysical table first, it's used a lot below
     represenative_ndr_biophysical_table_path = os.path.join(
@@ -385,6 +489,12 @@ def main():
         TASKGRAPH_DIR, N_CPUS)
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
+
+    db_to_shapefile_thread = threading.Thread(
+        target=db_to_shapefile,
+        args=(database_path, 1.0))
+    db_to_shapefile_thread.daemon = True
+    db_to_shapefile_thread.start()
 
     dem_rtree_path = os.path.join(TARGET_WORKSPACE, RTREE_PATH)
 
@@ -778,12 +888,12 @@ def main():
                     ws_working_dir, '%s_%s_modified_load.tif' % (
                         ws_prefix, scenario_key))
                 modified_load_task = task_graph.add_task(
-                    func=pygeoprocessing.raster_calculator,
+                    func=mult_arrays,
                     args=(
-                        [(scenario_ag_load_path, 1),
-                         (path_task_id_map['precip_%s' % scenario_key][0], 1)],
-                        mult_arrays, modified_load_raster_path, gdal.GDT_Float32,
-                        NODATA),
+                        modified_load_raster_path, gdal.GDT_Float32,
+                        NODATA, [
+                            scenario_ag_load_path,
+                            path_task_id_map['precip_%s' % scenario_key][0]]),
                     target_path_list=[modified_load_raster_path],
                     dependent_task_list=[
                         scenario_load_task,
@@ -791,12 +901,13 @@ def main():
                     task_name='modified_load_%s' % ws_prefix)
 
                 n_export_raster_path = os.path.join(
-                    ws_working_dir, '%s_%s_n_export.tif' % (ws_prefix, scenario_key))
+                    ws_working_dir, '%s_%s_n_export.tif' % (
+                        ws_prefix, scenario_key))
                 n_export_task = task_graph.add_task(
-                    func=pygeoprocessing.raster_calculator,
+                    func=mult_arrays,
                     args=(
-                        [(modified_load_raster_path, 1), (ndr_path, 1)], mult_arrays,
-                        n_export_raster_path, gdal.GDT_Float32, NODATA),
+                        n_export_raster_path, gdal.GDT_Float32, NODATA,
+                        [modified_load_raster_path, ndr_path]),
                     target_path_list=[n_export_raster_path],
                     dependent_task_list=[modified_load_task, ndr_task])
 
@@ -807,9 +918,19 @@ def main():
                         local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
                         database_path),
                     dependent_task_list=[n_export_task, reproject_watershed_task])
-
+            break
+        break
     task_graph.close()
     task_graph.join()
+    # report one last time
+    db_to_shapefile(database_path, -1.0)
+    with open(
+            os.path.join(RESULTS_DIR, 'ALL_DONE.txt'), 'w') as timestamp_file:
+        timestamp_file.write(
+            "Hi, I finished the NDR analysis at %s. Check out "
+            "results.shp\n" % datetime.datetime.now().strftime(
+                "%Y-%m-%d %H_%M_%S"))
+
 
 
 def merge_watershed_dems(
@@ -855,8 +976,10 @@ def merge_watershed_dems(
             dem_path_index_map[i] for i in overlapping_dem_list]
         LOGGER.debug("%s %s", watershed_id, overlapping_dem_path_list)
         workspace_dir = os.path.dirname(target_dem_path)
-        if not os.path.exists(workspace_dir):
+        try:
             os.makedirs(workspace_dir)
+        except OSError:
+            pass
         pygeoprocessing.merge_rasters(
             overlapping_dem_path_list, target_dem_path,
             bounding_box=watershed_bb)
@@ -881,6 +1004,7 @@ def build_dem_rtree(dem_path_list, dem_path_index_map_path, dem_rtree_path):
     dem_rtree.close()
     with open(dem_path_index_map_path, 'wb') as f:
         dill.dump(dem_path_index_map, f)
+
 
 def reproject_vector_feature(
         base_vector_path, target_wkt, feature_id, target_path):
@@ -907,6 +1031,11 @@ def reproject_vector_feature(
             "reproject_vector: %s already exists, removing and overwriting",
             target_path)
         os.remove(target_path)
+
+    try:
+        os.makedirs(os.path.dirname(target_path))
+    except OSError:
+        pass
 
     target_sr = osr.SpatialReference(target_wkt)
 

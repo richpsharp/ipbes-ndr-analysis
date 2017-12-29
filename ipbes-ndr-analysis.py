@@ -142,7 +142,8 @@ def aggregate_to_database(
         values and inserts a new row if the row does not already exist.
 
     Parameters:
-        n_export_raster_path (string): path to nutrient export raster.
+        n_export_raster_path (string): path to nutrient export raster in
+            units of kg/Ha.
         global_watershed_path (string): path to global shapefile where
             `feature_id` is an element. This lets us save the geometry to
             the database.
@@ -193,9 +194,9 @@ def aggregate_to_database(
             (n_export_raster_path, 1), local_watershed_path,
             aggregate_field_name, polygons_might_overlap=False)
 
-        LOGGER.debug(result)
-        total_export = result.itervalues().next()['sum']
-        LOGGER.debug(total_export)
+        pixel_area_ha = pygeoprocessing.get_raster_info(
+            n_export_raster_path)['mean_pixel_size']**2 * 0.0001
+        total_export = result.itervalues().next()['sum'] * pixel_area_ha
 
         global_watershed_vector = ogr.Open(global_watershed_path)
         global_watershed_layer = global_watershed_vector.GetLayer()

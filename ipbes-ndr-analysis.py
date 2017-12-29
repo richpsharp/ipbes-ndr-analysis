@@ -536,8 +536,12 @@ def main():
 
             watershed_basename = os.path.splitext(os.path.basename(global_watershed_path))[0]
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
+            # make a few subdirectories so we don't explode on directories
+            last_digits = '%.4d' % watershed_id
             ws_working_dir = os.path.join(
-                TARGET_WORKSPACE, "%s_working_dir" % ws_prefix)
+                TARGET_WORKSPACE, last_digits[-1], last_digits[-2],
+                last_digits[-3], last_digits[-4],
+                "%s_working_dir" % ws_prefix)
             watershed_dem_path = os.path.join(
                 ws_working_dir, 'ws_%s_dem.tif' % ws_prefix)
             merge_watershed_dems_task = task_graph.add_task(

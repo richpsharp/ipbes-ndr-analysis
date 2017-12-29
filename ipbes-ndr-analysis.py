@@ -132,6 +132,40 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
         gdal.GDT_Float64, NODATA)
 
 
+def calculate_ag_load(
+        load_n_raster_path, management_raster_path, load_raster_path,
+        target_ag_load_path):
+    """Add the agricultural load onto the base load.
+
+    Parameters:
+        load_n_raster_path (string): path to a base load raster with "999"
+            where the pixel should be replaced with the managed ag load.
+        management_raster_path (string): path to a raster that indicates
+            what proportion of pixel is c3
+        load_raster_path (string): says what load should be at pixel.
+        target_ag_load_path (string): generated raster that has the base
+            values from `load_n_raster_path` but with the 999s replaced by
+                "weighted average of (state_i * fertapplication_i)
+                for i in ['c3ann', '...'] / sum(state_i)" - from design doc.
+
+    Returns:
+        None.
+    """
+    def ag_load_op(base_load_n_array, management_array, ag_load_array):
+        """raster calculator replace 999 with ag loads."""
+        result = numpy.copy(base_load_n_array)
+        ag_mask = result == 999
+        result[ag_mask] = management_array[ag_mask] * ag_load_array[ag_mask]
+        return result
+
+    nodata = pygeoprocessing.get_raster_info(load_n_raster_path)['nodata'][0]
+
+    pygeoprocessing.raster_calculator(
+        [(load_n_raster_path, 1), (management_raster_path, 1),
+         (load_raster_path, 1)], ag_load_op, target_ag_load_path,
+        gdal.GDT_Float32, nodata)
+
+
 def calc_ic(d_up_array, d_dn_array):
     """Calculate log_10(d_up/d_dn) unless nodata or 0."""
     result = numpy.empty_like(d_up_array)
@@ -316,18 +350,34 @@ def main():
     feature_geom = None
     watershed_feature = None
 
-    # clip precip raster to watershed bb
-    precip_raster_path = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'precip_globe_WorldClim_30arcseconds.tif')
-
     landcover_raster_path = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
         'GLOBIO4_landuse_10sec_tifs_20171207_Idiv', 'Current2015',
         'Globio4_landuse_10sec_2015_cropint.tif')
 
+    precip_raster_path_cur = os.path.join(
+        BASE_DROPBOX_DIR, 'ipbes-data',
+        'precip_globe_WorldClim_30arcseconds.tif')
+
+    precip_raster_path_ssp1 = os.path.join(
+        BASE_DROPBOX_DIR, 'ipbes-data',
+        'Climate scenarios for NDR', 'he26pr50.tif')
+
+    precip_raster_path_ssp3 = os.path.join(
+        BASE_DROPBOX_DIR, 'ipbes-data',
+        'Climate scenarios for NDR', 'he60pr50.tif')
+
+    precip_raster_path_ssp5 = os.path.join(
+        BASE_DROPBOX_DIR, 'ipbes-data',
+        'Climate scenarios for NDR', 'he85pr50.tif')
+
     base_raster_path_list = [
-        watershed_dem_path, precip_raster_path, landcover_raster_path]
+        watershed_dem_path,
+        landcover_raster_path,
+        precip_raster_path_cur,
+        precip_raster_path_ssp1,
+        precip_raster_path_ssp3,
+        precip_raster_path_ssp5]
 
     aligned_path_list = [
         os.path.join(
@@ -355,8 +405,11 @@ def main():
     path_task_id_map = {}
     for raster_id, base_path, target_path in [
             ('dem', aligned_path_list[0], utm_dem_path),
-            ('precip', aligned_path_list[1], utm_precip_path),
-            ('landcover', aligned_path_list[2], utm_landcover_path)]:
+            ('landcover', aligned_path_list[1], utm_landcover_path),
+            ('precip_cur', aligned_path_list[2], utm_precip_path),
+            ('precip_ssp1', aligned_path_list[3], utm_precip_path),
+            ('precip_ssp3', aligned_path_list[4], utm_precip_path),
+            ('precip_ssp5', aligned_path_list[5], utm_precip_path),]:
         # determine target pixel size by determining length of degree
         task = task_graph.add_task(
             func=pygeoprocessing.warp_raster,
@@ -422,19 +475,6 @@ def main():
         target_path_list=[load_n_raster_path],
         dependent_task_list=[path_task_id_map['landcover'][1]],
         task_name='reclasify_load_n_%s' % ws_prefix)
-
-    # calculate modified load (load * precip)
-    modified_load_raster_path = os.path.join(
-        ws_working_dir, '%s_modified_load.tif' % ws_prefix)
-    modified_load_task = task_graph.add_task(
-        func=pygeoprocessing.raster_calculator,
-        args=(
-            [(load_n_raster_path, 1), (path_task_id_map['precip'][0], 1)],
-            mult_arrays, modified_load_raster_path, gdal.GDT_Float64, NODATA),
-        target_path_list=[modified_load_raster_path],
-        dependent_task_list=[
-            reclassify_load_n_task, path_task_id_map['precip'][1]],
-        task_name='modified_load_%s' % ws_prefix)
 
     # calculate slope
     slope_raster_path = os.path.join(
@@ -567,6 +607,45 @@ def main():
         target_path_list=[ndr_path],
         dependent_task_list=[downstream_ret_eff_task, ic_task],
         task_name='ndr_task_%s' % ws_prefix)
+
+    # calculate load
+
+    for scenario_key in ['cur', 'ssp1', 'ssp3', 'ssp5']:
+        # calculate scenario AG load
+        scenario_ag_load_path = os.path.join(
+            ws_working_dir, '%s_%s_ag_load.tif' % (ws_prefix, scenario_key))
+        scenario_management_raster_path = 'FILLIN'
+        scenario_load_raster_path = 'FILLIN'
+        scenario_load_task = task_graph.add_task(
+            func=calculate_ag_load,
+            args=(
+                load_n_raster_path, scenario_management_raster_path,
+                scenario_load_raster_path, scenario_ag_load_path),
+            target_path_list=[scenario_ag_load_path],
+            dependent_task_list=[reclassify_load_n_task],
+            task_name='scenario_load_%s_%s' % (ws_prefix, scenario_key))
+
+        # calculate modified load (load * precip)
+        modified_load_raster_path = os.path.join(
+            ws_working_dir, '%s_modified_load.tif' % ws_prefix)
+        modified_load_task = task_graph.add_task(
+            func=pygeoprocessing.raster_calculator,
+            args=(
+                [(scenario_ag_load_path, 1),
+                 (path_task_id_map['precip_%s' % scenario_key][0], 1)],
+                mult_arrays, modified_load_raster_path, gdal.GDT_Float64, NODATA),
+            target_path_list=[modified_load_raster_path],
+            dependent_task_list=[
+                scenario_load_task,
+                path_task_id_map['precip_%s' % scenario_key][1]],
+            task_name='modified_load_%s' % ws_prefix)
+
+
+    # calculate load * NDR
+
+    # aggregate result over watershed
+
+    # save to SQLlite (id, export, polygon geometry)
 
     # TODO: make results part of precip or lulc name for each scenario?
 

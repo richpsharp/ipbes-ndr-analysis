@@ -16,7 +16,9 @@ from osgeo import osr
 import pygeoprocessing
 import pygeoprocessing.routing
 
-import pyximport; pyximport.install()
+# Compiles cython on runtime.
+import pyximport
+pyximport.install()
 import ipbes_ndr_analysis_cython
 
 N_CPUS = -1
@@ -58,7 +60,7 @@ TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 RTREE_PATH = 'dem_rtree'
 
 
-def length_of_degree(lat, lng):
+def length_of_degree(lat):
     """Calcualte the length of a degree in meters."""
     m1 = 111132.92
     m2 = -559.82
@@ -190,7 +192,6 @@ def aggregate_to_database(
             # already in table, skipping
             return
 
-        # TODO: aggregate value over polygon
         result = pygeoprocessing.zonal_statistics(
             (n_export_raster_path, 1), local_watershed_path,
             aggregate_field_name, polygons_might_overlap=False)
@@ -216,6 +217,7 @@ def aggregate_to_database(
     else:
         raise IOError(
             "Error! cannot create the database connection.")
+
 
 def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
     """Calculate NDR raster.
@@ -301,6 +303,7 @@ class MultByScalar(taskgraph.EncapsulatedTaskOp):
             self.raster_path_band[0])['nodata'][self.raster_path_band[1]-1]
 
         def mult_by_scalar(array):
+            """Multiply non-nodta values by self.scalar"""
             result = numpy.empty_like(array)
             result[:] = self.target_nodata
             valid_mask = array != nodata
@@ -341,19 +344,20 @@ class DUpOp(taskgraph.EncapsulatedTaskOp):
             self.flow_accum_raster_path)['nodata'][0]
 
         def d_up_op(slope_accum_array, flow_accmulation_array):
+            """Mult average upslope by sqrt of upslope area."""
             result = numpy.empty_like(slope_accum_array)
             result[:] = NODATA
             valid_mask = flow_accmulation_array != flow_accum_nodata
             result[valid_mask] = (
                 slope_accum_array[valid_mask] /
                 flow_accmulation_array[valid_mask]) * numpy.sqrt(
-                flow_accmulation_array[valid_mask] * self.pixel_area)
+                    flow_accmulation_array[valid_mask] * self.pixel_area)
             return result
 
         pygeoprocessing.raster_calculator(
             [(self.slope_accum_raster_path, 1),
              (self.flow_accum_raster_path, 1)], d_up_op,
-             self.target_d_up_raster_path, gdal.GDT_Float64, NODATA)
+            self.target_d_up_raster_path, gdal.GDT_Float64, NODATA)
 
 
 def main():
@@ -433,7 +437,7 @@ def main():
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
     utm_pixel_size = abs(dem_pixel_size[0]) * length_of_degree(
-        feature_centroid.GetY(), feature_centroid.GetX())
+        feature_centroid.GetY())
 
     local_watershed_path = os.path.join(ws_working_dir, '%s.shp' % ws_prefix)
     if os.path.exists(local_watershed_path):
@@ -473,16 +477,16 @@ def main():
 
     ag_load_raster_path_cur = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios\ssp1_2015_ag_load.tif')
+        'ag_load_scenarios', 'ssp1_2015_ag_load.tif')
     ag_load_raster_path_ssp1 = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios\ssp1_2050_ag_load.tif')
+        'ag_load_scenarios', 'ssp1_2050_ag_load.tif')
     ag_load_raster_path_ssp3 = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios\ssp3_2050_ag_load.tif')
+        'ag_load_scenarios', 'ssp3_2050_ag_load.tif')
     ag_load_raster_path_ssp5 = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios\ssp5_2050_ag_load.tif')
+        'ag_load_scenarios', 'ssp5_2050_ag_load.tif')
 
     base_raster_path_list = [
         watershed_dem_path,
@@ -494,7 +498,7 @@ def main():
         ag_load_raster_path_cur,
         ag_load_raster_path_ssp1,
         ag_load_raster_path_ssp3,
-        ag_load_raster_path_ssp5,]
+        ag_load_raster_path_ssp5]
 
     aligned_path_list = [
         os.path.join(
@@ -712,7 +716,8 @@ def main():
     ic_path = os.path.join(ws_working_dir, '%s_ic.tif' % ws_prefix)
     ic_task = task_graph.add_task(
         func=pygeoprocessing.raster_calculator,
-        args=([(d_up_raster_path, 1), (d_dn_raster_path, 1)],
+        args=(
+            [(d_up_raster_path, 1), (d_dn_raster_path, 1)],
             calc_ic, ic_path, gdal.GDT_Float64, IC_NODATA),
         target_path_list=[ic_path],
         dependent_task_list=[d_up_task, d_dn_task],
@@ -795,7 +800,6 @@ def main():
                 database_path),
             dependent_task_list=[n_export_task, reproject_watershed_task])
 
-    #TODO: loop over all shapefiles
     task_graph.close()
     task_graph.join()
 

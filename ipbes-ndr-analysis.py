@@ -402,7 +402,9 @@ def main():
             dem_path_index_map_path],
         task_name='build_dem_rtree')
 
-    global_watershed_path = r"C:\Users\Rich\Dropbox\ipbes-data\watersheds_globe_HydroSHEDS_15arcseconds\af_bas_15s_beta.shp"
+    global_watershed_path = os.path.join(
+        BASE_DROPBOX_DIR, 'ipbes-data',
+        'watersheds_globe_HydroSHEDS_15arcseconds', 'af_bas_15s_beta.shp')
     watershed_vector = ogr.Open(global_watershed_path)
     watershed_layer = watershed_vector.GetLayer()
 
@@ -460,15 +462,15 @@ def main():
 
     precip_raster_path_ssp1 = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'Climate scenarios for NDR', 'he26pr50.tif')
+        'ssp1_3_5_annual_precip_scenarios_for_ndr', 'he26pr50.tif')
 
     precip_raster_path_ssp3 = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'Climate scenarios for NDR', 'he60pr50.tif')
+        'ssp1_3_5_annual_precip_scenarios_for_ndr', 'he60pr50.tif')
 
     precip_raster_path_ssp5 = os.path.join(
         BASE_DROPBOX_DIR, 'ipbes-data',
-        'Climate scenarios for NDR', 'he85pr50.tif')
+        'ssp1_3_5_annual_precip_scenarios_for_ndr', 'he85pr50.tif')
 
     base_raster_path_list = [
         watershed_dem_path,

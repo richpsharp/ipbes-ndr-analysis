@@ -418,8 +418,6 @@ def calculate_downstream_ret_eff(
 
     cdef double s_i_flat = exp(-5 * cell_size / ret_len)
     cdef double s_i_diag = exp(-5 * cell_size * 1.4142135 / ret_len)
-    print s_i_flat
-    print s_i_diag
 
     flow_direction_raster = gdal.Open(flow_dir_raster_path_band[0])
     flow_direction_band = flow_direction_raster.GetRasterBand(

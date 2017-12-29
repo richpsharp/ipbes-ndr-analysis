@@ -140,6 +140,7 @@ def db_to_shapefile(database_path, sleep_time):
                     "is done.\n")
             result_layer.SyncToDisk()
             result_layer = None
+            ogr.DataSource.__swig_destroy__(result_vector)
             result_vector = None
         except Exception:
             LOGGER.exception(

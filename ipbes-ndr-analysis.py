@@ -652,11 +652,8 @@ def main():
             target_path_list=[n_export_raster_path],
             dependent_task_list=[modified_load_task, ndr_task])
 
-    # aggregate result over watershed
-
-    # save to SQLlite (id, export, polygon geometry)
-
-    # TODO: make results part of precip or lulc name for each scenario?
+        # TODO: aggregate result over watershed
+        # TODO: save to SQLlite (id, scenario_key, export, polygon geometry)
 
     task_graph.close()
     task_graph.join()

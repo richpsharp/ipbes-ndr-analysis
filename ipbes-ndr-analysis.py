@@ -1,4 +1,5 @@
 """Script to manage NDR runs for IPBES project."""
+import shutil
 import time
 import datetime
 import threading
@@ -24,7 +25,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 5
+N_CPUS = 4
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -69,14 +70,15 @@ RTREE_PATH = 'dem_rtree'
 
 def db_to_shapefile(database_path, sleep_time):
     """Converts db to shapefile every `sleep_time` seconds."""
+    base_shape_name = 'results.shp'
     while True:
         try:
             target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
-
-            if os.path.exists(target_shapefile_path):
-                os.remove(target_shapefile_path)
+            if os.path.exists(base_shape_name):
+                os.remove(base_shape_name)
+                LOGGER.info("remove %s", base_shape_name)
             try:
-                os.makedirs(os.path.dirname(target_shapefile_path))
+                os.makedirs(RESULTS_DIR)
             except OSError:
                 pass
 
@@ -91,9 +93,9 @@ def db_to_shapefile(database_path, sleep_time):
             target_sr.ImportFromEPSG(4326)
 
             driver = ogr.GetDriverByName('ESRI Shapefile')
-            result_vector = driver.CreateDataSource(target_shapefile_path)
+            result_vector = driver.CreateDataSource(base_shape_name)
             result_layer = result_vector.CreateLayer(
-                os.path.splitext(os.path.basename(target_shapefile_path))[0],
+                os.path.splitext(os.path.basename(base_shape_name))[0],
                 target_sr, ogr.wkbPolygon)
             ws_field = ogr.FieldDefn("ws_id", ogr.OFTString)
             ws_field.SetWidth(24)
@@ -116,7 +118,6 @@ def db_to_shapefile(database_path, sleep_time):
                 for ws_id, ws_geom in result:
                     feature = ogr.Feature(result_layer.GetLayerDefn())
                     feature.SetField('ws_id', ws_id)
-                    print ws_id
                     for scenario in scenario_list:
                         cursor.execute(
                             """SELECT total_export FROM nutrient_export
@@ -126,27 +127,47 @@ def db_to_shapefile(database_path, sleep_time):
                     feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
                     result_layer.CreateFeature(feature)
 
+            result_layer.SyncToDisk()
+            result_vector.SyncToDisk()
+            result_layer = None
+            ogr.DataSource.__swig_destroy__(result_vector)
+            result_vector = None
+
             for old_timestamp_file_path in glob.glob(
                     os.path.join(RESULTS_DIR, '*.txt')):
                 os.remove(old_timestamp_file_path)
             timestring = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
             timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
                 timestring))
+            for file_path in glob.glob('results.*'):
+                print file_path, RESULTS_DIR
+                dst_file = os.path.join(RESULTS_DIR, file_path)
+                if os.path.exists(dst_file):
+                    os.remove(dst_file)
+                shutil.copy2(file_path, dst_file)
             with open(timestamp_path, 'w') as timestamp_file:
                 timestamp_file.write(
                     "Hi, I'm an automatically generated file.\n"
                     "I last updated NDR results on %s.\n" % timestring +
                     "There will be an 'all done.txt' file here when everything "
                     "is done.\n")
-            result_layer.SyncToDisk()
-            result_layer = None
-            ogr.DataSource.__swig_destroy__(result_vector)
-            result_vector = None
+
         except Exception:
             LOGGER.exception(
                 "There was an exception during results reporting.")
+        finally:
+            try:
+                result_layer.SyncToDisk()
+                result_vector.SyncToDisk()
+                result_layer = None
+                ogr.DataSource.__swig_destroy__(result_vector)
+                result_vector = None
+            except:
+                pass
+
         if sleep_time < 0:
             break
+        LOGGER.info('sleep now %s' % sleep_time)
         time.sleep(sleep_time)
 
 
@@ -493,7 +514,7 @@ def main():
 
     db_to_shapefile_thread = threading.Thread(
         target=db_to_shapefile,
-        args=(database_path, 1.0))
+        args=(database_path, 60.0))
     db_to_shapefile_thread.daemon = True
     db_to_shapefile_thread.start()
 
@@ -923,8 +944,6 @@ def main():
                         local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
                         database_path),
                     dependent_task_list=[n_export_task, reproject_watershed_task])
-            break
-        break
     task_graph.close()
     task_graph.join()
     # report one last time
@@ -987,7 +1006,7 @@ def merge_watershed_dems(
             pass
         pygeoprocessing.merge_rasters(
             overlapping_dem_path_list, target_dem_path,
-            bounding_box=watershed_bb)
+            expected_nodata=-32768.0, bounding_box=watershed_bb)
     else:
         LOGGER.debug(
             "no overlapping dems found for %s wsid %d", watershed_path,

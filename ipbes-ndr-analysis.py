@@ -100,7 +100,7 @@ class ClampOp(taskgraph.EncapsulatedTaskOp):
 
         pygeoprocessing.raster_calculator(
             [self.raster_path_band], clamp_op, self.target_path,
-            gdal.GDT_Float64, nodata)
+            gdal.GDT_Float32, nodata)
 
 
 def calculate_ag_load(
@@ -249,7 +249,7 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
 
     pygeoprocessing.raster_calculator(
         [(downstream_ret_eff_path, 1), (ic_path, 1)], ndr_op, target_ndr_path,
-        gdal.GDT_Float64, NODATA)
+        gdal.GDT_Float32, NODATA)
 
 
 def calc_ic(d_up_array, d_dn_array):
@@ -312,7 +312,7 @@ class MultByScalar(taskgraph.EncapsulatedTaskOp):
 
         pygeoprocessing.raster_calculator(
             [self.raster_path_band], mult_by_scalar, self.target_path,
-            gdal.GDT_Float64, self.target_nodata)
+            gdal.GDT_Float32, self.target_nodata)
 
 class DUpOp(taskgraph.EncapsulatedTaskOp):
     """Calculate D_up from Equation 7 of NDR user's guide.
@@ -357,7 +357,7 @@ class DUpOp(taskgraph.EncapsulatedTaskOp):
         pygeoprocessing.raster_calculator(
             [(self.slope_accum_raster_path, 1),
              (self.flow_accum_raster_path, 1)], d_up_op,
-            self.target_d_up_raster_path, gdal.GDT_Float64, NODATA)
+            self.target_d_up_raster_path, gdal.GDT_Float32, NODATA)
 
 
 def main():
@@ -594,7 +594,7 @@ def main():
         func=pygeoprocessing.reclassify_raster,
         args=(
             (path_task_id_map['landcover'][0], 1), eff_n_lucode_map,
-            eff_n_raster_path, gdal.GDT_Float64, NODATA),
+            eff_n_raster_path, gdal.GDT_Float32, NODATA),
         target_path_list=[eff_n_raster_path],
         dependent_task_list=[path_task_id_map['landcover'][1]],
         task_name='reclasify_eff_n_%s' % ws_prefix)
@@ -608,7 +608,7 @@ def main():
         func=pygeoprocessing.reclassify_raster,
         args=(
             (path_task_id_map['landcover'][0], 1), load_n_lucode_map,
-            load_n_raster_path, gdal.GDT_Float64, NODATA),
+            load_n_raster_path, gdal.GDT_Float32, NODATA),
         target_path_list=[load_n_raster_path],
         dependent_task_list=[path_task_id_map['landcover'][1]],
         task_name='reclasify_load_n_%s' % ws_prefix)
@@ -688,7 +688,7 @@ def main():
         args=(
             [(downstream_flow_distance_path, 1),
              (clamp_slope_raster_path, 1)],
-            div_arrays, d_dn_per_pixel_path, gdal.GDT_Float64, NODATA),
+            div_arrays, d_dn_per_pixel_path, gdal.GDT_Float32, NODATA),
         target_path_list=[d_dn_per_pixel_path],
         dependent_task_list=[
             downstream_flow_distance_task, clamp_slope_task],
@@ -718,7 +718,7 @@ def main():
         func=pygeoprocessing.raster_calculator,
         args=(
             [(d_up_raster_path, 1), (d_dn_raster_path, 1)],
-            calc_ic, ic_path, gdal.GDT_Float64, IC_NODATA),
+            calc_ic, ic_path, gdal.GDT_Float32, IC_NODATA),
         target_path_list=[ic_path],
         dependent_task_list=[d_up_task, d_dn_task],
         task_name='ic_%s' % ws_prefix)
@@ -774,7 +774,7 @@ def main():
             args=(
                 [(scenario_ag_load_path, 1),
                  (path_task_id_map['precip_%s' % scenario_key][0], 1)],
-                mult_arrays, modified_load_raster_path, gdal.GDT_Float64,
+                mult_arrays, modified_load_raster_path, gdal.GDT_Float32,
                 NODATA),
             target_path_list=[modified_load_raster_path],
             dependent_task_list=[

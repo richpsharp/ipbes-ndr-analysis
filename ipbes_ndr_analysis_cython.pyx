@@ -388,7 +388,7 @@ def calculate_downstream_ret_eff(
 
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
-        target_downstream_retention_raster_path, gdal.GDT_Float64,
+        target_downstream_retention_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',

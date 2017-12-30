@@ -716,13 +716,15 @@ def main():
                 path_task_id_map[raster_id] = (target_path, task)
 
             # fill and route dem
-            filled_watershed_dem_path = '%s_filled.tif' % ws_prefix
-            flow_dir_path = '%s_flow_dir.tif' % ws_prefix
+            filled_watershed_dem_path = os.path.join(
+                ws_working_dir, '%s_filled.tif' % ws_prefix)
+            flow_dir_path = os.path.join(
+                ws_working_dir, '%s_flow_dir.tif' % ws_prefix)
             fill_pits_task = task_graph.add_task(
                 func=pygeoprocessing.routing.fill_pits,
                 args=(
-                    (path_task_id_map['dem'][0], 1), filled_watershed_dem_path,
-                    flow_dir_path),
+                    (path_task_id_map['dem'][0], 1),
+                    filled_watershed_dem_path, flow_dir_path),
                 kwargs={'temp_dir_path': ws_working_dir},
                 target_path_list=[
                     filled_watershed_dem_path, flow_dir_path],

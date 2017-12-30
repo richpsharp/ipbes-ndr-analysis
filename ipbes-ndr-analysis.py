@@ -328,6 +328,7 @@ def aggregate_to_database(
             """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
             (ws_prefix, scenario_key, total_export, geometry_wkt))
         conn.commit()
+        conn.close()
     else:
         raise IOError(
             "Error! cannot create the database connection.")

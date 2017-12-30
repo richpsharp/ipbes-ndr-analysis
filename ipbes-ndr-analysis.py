@@ -26,7 +26,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = -1
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -347,8 +347,12 @@ def aggregate_to_database(
         global_watershed_feature = None
         global_watershed_layer = None
         global_watershed_vector = None
+        insert_string = """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)"""
+        LOGGER.debug(
+            '%s %s', insert_string, str((
+                ws_prefix, scenario_key, total_export, geometry_wkt)))
         cursor.execute(
-            """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
+            insert_string,
             (ws_prefix, scenario_key, total_export, geometry_wkt))
         conn.commit()
         conn.close()

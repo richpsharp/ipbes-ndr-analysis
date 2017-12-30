@@ -279,7 +279,7 @@ def aggregate_to_database(
         None.
     """
     LOGGER.info(
-        '********* aggregating results for %s %s', ws_prefix_key,
+        '********* aggregating results for %s %s', ws_prefix,
         scenario_key)
     sql_create_projects_table = (
         """ CREATE TABLE IF NOT EXISTS nutrient_export (

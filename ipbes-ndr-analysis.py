@@ -80,7 +80,6 @@ def db_to_shapefile(database_path, sleep_time):
             target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
             if os.path.exists(base_shape_name):
                 os.remove(base_shape_name)
-                LOGGER.info("remove %s", base_shape_name)
             try:
                 os.makedirs(RESULTS_DIR)
             except OSError:

@@ -391,7 +391,7 @@ def calculate_downstream_ret_eff(
         target_downstream_retention_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
     cell_size = pygeoprocessing.get_raster_info(

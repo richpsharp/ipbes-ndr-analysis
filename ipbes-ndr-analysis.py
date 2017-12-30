@@ -140,7 +140,6 @@ def db_to_shapefile(database_path, sleep_time):
             timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
                 timestring))
             for file_path in glob.glob('results.*'):
-                print file_path, RESULTS_DIR
                 dst_file = os.path.join(RESULTS_DIR, file_path)
                 if os.path.exists(dst_file):
                     os.remove(dst_file)
@@ -167,7 +166,6 @@ def db_to_shapefile(database_path, sleep_time):
 
         if sleep_time < 0:
             break
-        LOGGER.info('sleep now %s' % sleep_time)
         time.sleep(sleep_time)
 
 

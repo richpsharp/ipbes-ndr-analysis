@@ -37,7 +37,11 @@ logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
     level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
-LOGGER = logging.getLogger('ipbes_pollination_analysis')
+hdlr = logging.FileHandler('log.txt')
+formatter = logging.Formatter(
+    '%(asctime)s %(name)-10s %(levelname)-8s %(message)s')
+hdlr.setFormatter(formatter)
+LOGGER = logging.getLogger('ipbes_ndr_analysis')
 
 POSSIBLE_DROPBOX_LOCATIONS = [
     r'D:\Dropbox',
@@ -242,6 +246,21 @@ def calculate_ag_load(
         [(load_n_raster_path, 1), (ag_load_raster_path, 1)],
         ag_load_op, target_ag_load_path,
         gdal.GDT_Float32, nodata)
+
+
+def result_in_database(database_path, ws_prefix):
+    """True if ws_prefix in database."""
+    conn = sqlite3.connect(database_path)
+    if conn is not None:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT ws_prefix_key, scenario_key FROM nutrient_export
+            WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
+                ws_prefix, scenario_key))
+        if cursor.fetchone() is not None:
+            # already in table, skipping
+            return True
+    return False
 
 
 def aggregate_to_database(
@@ -557,11 +576,13 @@ def main():
                 # 100 sq km which is about the minimum watershed size we'd
                 # want.
                 continue
+            ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
+            if result_in_database(database_path, ws_prefix):
+                LOGGER.info("%s already reported, skipping", ws_prefix)
 
             feature_centroid = feature_geom.Centroid()
 
             watershed_basename = os.path.splitext(os.path.basename(global_watershed_path))[0]
-            ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
             # make a few subdirectories so we don't explode on directories
             last_digits = '%.4d' % watershed_id
             ws_working_dir = os.path.join(

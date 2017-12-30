@@ -254,9 +254,8 @@ def result_in_database(database_path, ws_prefix):
     if conn is not None:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT ws_prefix_key, scenario_key FROM nutrient_export
-            WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
-                ws_prefix, scenario_key))
+            """SELECT ws_prefix_key FROM nutrient_export
+            WHERE (ws_prefix_key = ?)""", (ws_prefix,))
         if cursor.fetchone() is not None:
             # already in table, skipping
             return True
@@ -576,13 +575,13 @@ def main():
                 # 100 sq km which is about the minimum watershed size we'd
                 # want.
                 continue
+            watershed_basename = os.path.splitext(os.path.basename(global_watershed_path))[0]
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
             if result_in_database(database_path, ws_prefix):
                 LOGGER.info("%s already reported, skipping", ws_prefix)
 
             feature_centroid = feature_geom.Centroid()
 
-            watershed_basename = os.path.splitext(os.path.basename(global_watershed_path))[0]
             # make a few subdirectories so we don't explode on directories
             last_digits = '%.4d' % watershed_id
             ws_working_dir = os.path.join(

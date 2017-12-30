@@ -1002,7 +1002,8 @@ def main():
                         [modified_load_raster_path, ndr_path]),
                     target_path_list=[n_export_raster_path],
                     dependent_task_list=[modified_load_task, ndr_task],
-                    priority=task_priority)
+                    priority=task_priority,
+                    task_name='n_export_%s_%s' % (scenario_key, ws_prefix))
                 task_priority -= 1
 
                 aggregate_result_task = task_graph.add_task(
@@ -1012,7 +1013,8 @@ def main():
                         local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
                         database_path),
                     dependent_task_list=[n_export_task, reproject_watershed_task],
-                    priority=task_priority)
+                    priority=task_priority,
+                    task_name='aggregate_result_%s_%s' % (scenario_key, ws_prefix))
                 task_priority -= 1
     task_graph.close()
     task_graph.join()

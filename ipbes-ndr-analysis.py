@@ -26,7 +26,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 4
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -265,6 +265,7 @@ def result_in_database(database_path, ws_prefix):
                 # already in table, skipping
                 return True
         except sqlite3.OperationalError:
+            LOGGER.exception("operational error on %s"% ws_prefix)
             return False
     return False
 
@@ -325,8 +326,16 @@ def aggregate_to_database(
             """SELECT ws_prefix_key, scenario_key FROM nutrient_export
             WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
                 ws_prefix, scenario_key))
-        if cursor.fetchone() is not None:
+        db_result = cursor.fetchone()
+        if db_result is not None:
             # already in table, skipping
+            LOGGER.debug(
+                "already in table %s %s %s" % (
+                    ws_prefix, scenario_key, db_result))
+            LOGGER.debug(
+                "result of in table %s" % result_in_database(
+                    target_database_path, ws_prefix))
+            LOGGER.debug(target_database_path)
             return
 
         result = pygeoprocessing.zonal_statistics(
@@ -348,9 +357,6 @@ def aggregate_to_database(
         global_watershed_layer = None
         global_watershed_vector = None
         insert_string = """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)"""
-        LOGGER.debug(
-            '%s %s', insert_string, str((
-                ws_prefix, scenario_key, total_export, geometry_wkt)))
         cursor.execute(
             insert_string,
             (ws_prefix, scenario_key, total_export, geometry_wkt))
@@ -595,9 +601,10 @@ def main():
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
             if result_in_database(database_path, ws_prefix):
                 LOGGER.info("%s already reported, skipping", ws_prefix)
+                continue
             heapq.heappush(watershed_priority_queue, (
                 watershed_area, feature_centroid, global_watershed_path,
-                watershed_id))
+                watershed_id, ws_prefix))
             feature_geom = None
             watershed_feature = None
         watershed_layer = None
@@ -606,7 +613,7 @@ def main():
     while watershed_priority_queue:
         # iterate from smallest to largest watershed
         (watershed_area, feature_centroid,
-         global_watershed_path, watershed_id) = heapq.heappop(
+         global_watershed_path, watershed_id, ws_prefix) = heapq.heappop(
             watershed_priority_queue)
         LOGGER.debug('****** %f %d %s', watershed_area, watershed_id, global_watershed_path)
 

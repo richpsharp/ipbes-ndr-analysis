@@ -489,7 +489,7 @@ def main():
     logging.basicConfig(
         format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
         level=logging.WARN, datefmt='%m/%d/%Y %H:%M:%S ')
-
+    task_priority = 0  # we'll use this to schedule deep rather than wide
     try:
         os.makedirs(TARGET_WORKSPACE)
     except OSError:
@@ -535,7 +535,9 @@ def main():
         target_path_list=[
             dem_rtree_path+'.dat',  # rtree adds a ".dat" file
             dem_path_index_map_path],
-        task_name='build_dem_rtree')
+        task_name='build_dem_rtree',
+        priority=task_priority)
+    task_priority -= 1
 
     global_watershed_path_list = glob.glob(
         os.path.join(
@@ -573,7 +575,9 @@ def main():
                     dem_path_index_map_path, watershed_dem_path),
                 target_path_list=[watershed_dem_path],
                 dependent_task_list=[build_dem_rtree_task],
-                task_name='merge_watershed_dems_%s' % ws_prefix)
+                task_name='merge_watershed_dems_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             utm_code = (math.floor((feature_centroid.GetX() + 180)/6) % 60) + 1
             lat_code = 6 if feature_centroid.GetY() > 0 else 7
@@ -592,7 +596,9 @@ def main():
                     global_watershed_path, epsg_srs.ExportToWkt(), watershed_id,
                     local_watershed_path),
                 target_path_list=[local_watershed_path],
-                task_name='project_watershed_%s' % ws_prefix)
+                task_name='project_watershed_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             feature_centroid = None
             feature_geom = None
@@ -660,7 +666,9 @@ def main():
                     dem_pixel_size, 'intersection'),
                 target_path_list=aligned_path_list,
                 dependent_task_list=[merge_watershed_dems_task],
-                task_name='align_resize_task_%s' % ws_prefix)
+                task_name='align_resize_task_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             utm_dem_path = os.path.join(
                 ws_working_dir, '%s_%s_dem.tif' % (ws_prefix, epsg_code))
@@ -700,7 +708,9 @@ def main():
                     kwargs={'target_sr_wkt': epsg_srs.ExportToWkt()},
                     target_path_list=[target_path],
                     dependent_task_list=[align_resize_task],
-                    task_name='warp_raster_%s' % raster_id)
+                    task_name='warp_raster_%s' % raster_id,
+                    priority=task_priority)
+                task_priority -= 1
                 path_task_id_map[raster_id] = (target_path, task)
 
             # fill and route dem
@@ -715,7 +725,9 @@ def main():
                 target_path_list=[
                     filled_watershed_dem_path, flow_dir_path],
                 dependent_task_list=[path_task_id_map['dem'][1]],
-                task_name='fill_pits_task_%s' % ws_prefix)
+                task_name='fill_pits_task_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # flow accum dem
             flow_accum_path = os.path.join(
@@ -727,7 +739,9 @@ def main():
                 kwargs={'temp_dir_path': ws_working_dir},
                 target_path_list=[flow_accum_path],
                 dependent_task_list=[fill_pits_task],
-                task_name='flow_accmulation_%s' % ws_prefix)
+                task_name='flow_accmulation_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # reclassify eff_n
             eff_n_lucode_map = dict(
@@ -741,7 +755,9 @@ def main():
                     eff_n_raster_path, gdal.GDT_Float32, NODATA),
                 target_path_list=[eff_n_raster_path],
                 dependent_task_list=[path_task_id_map['landcover'][1]],
-                task_name='reclasify_eff_n_%s' % ws_prefix)
+                task_name='reclasify_eff_n_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # reclassify load_n
             load_n_raster_path = os.path.join(
@@ -755,7 +771,9 @@ def main():
                     load_n_raster_path, gdal.GDT_Float32, NODATA),
                 target_path_list=[load_n_raster_path],
                 dependent_task_list=[path_task_id_map['landcover'][1]],
-                task_name='reclasify_load_n_%s' % ws_prefix)
+                task_name='reclasify_load_n_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate slope
             slope_raster_path = os.path.join(
@@ -765,7 +783,9 @@ def main():
                 args=((path_task_id_map['dem'][0], 1), slope_raster_path),
                 target_path_list=[slope_raster_path],
                 dependent_task_list=[path_task_id_map['dem'][1]],
-                task_name='calculate_slope_%s' % ws_prefix)
+                task_name='calculate_slope_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             clamp_slope_raster_path = os.path.join(
                 ws_working_dir, '%s_clamp_slope.tif' % ws_prefix)
@@ -774,7 +794,9 @@ def main():
                     (slope_raster_path, 1), 0.005, clamp_slope_raster_path),
                 target_path_list=[clamp_slope_raster_path],
                 dependent_task_list=[calculate_slope_task],
-                task_name='clamp_slope_%s' % ws_prefix)
+                task_name='clamp_slope_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate D_up
             slope_accum_watershed_dem_path = os.path.join(
@@ -788,7 +810,9 @@ def main():
                     'weight_raster_path_band': (clamp_slope_raster_path, 1)},
                 target_path_list=[slope_accum_watershed_dem_path],
                 dependent_task_list=[fill_pits_task, clamp_slope_task],
-                task_name='slope_accmulation_%s' % ws_prefix)
+                task_name='slope_accmulation_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
             d_up_task = task_graph.add_task(
@@ -797,7 +821,9 @@ def main():
                     flow_accum_path, d_up_raster_path),
                 target_path_list=[d_up_raster_path],
                 dependent_task_list=[slope_accmulation_task, flow_accum_task],
-                task_name='d_up_%s' % ws_prefix)
+                task_name='d_up_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate flow path in pixels length down to stream
             pixel_flow_length_raster_path = os.path.join(
@@ -811,7 +837,9 @@ def main():
                 kwargs={'temp_dir_path': ws_working_dir},
                 target_path_list=[pixel_flow_length_raster_path],
                 dependent_task_list=[fill_pits_task, flow_accum_task],
-                task_name='downstream_pixel_flow_length_%s' % ws_prefix)
+                task_name='downstream_pixel_flow_length_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate real flow_path (flow length * pixel size)
             downstream_flow_distance_path = os.path.join(
@@ -822,7 +850,9 @@ def main():
                     downstream_flow_distance_path),
                 target_path_list=[downstream_flow_distance_path],
                 dependent_task_list=[downstream_flow_length_task],
-                task_name='downstream_m_flow_dist_%s' % ws_prefix)
+                task_name='downstream_m_flow_dist_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate downstream distance / downstream slope
             d_dn_per_pixel_path = os.path.join(
@@ -836,7 +866,9 @@ def main():
                 target_path_list=[d_dn_per_pixel_path],
                 dependent_task_list=[
                     downstream_flow_distance_task, clamp_slope_task],
-                task_name='d_dn_per_pixel_%s' % ws_prefix)
+                task_name='d_dn_per_pixel_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate D_dn: downstream sum of distance / downstream slope
             d_dn_raster_path = os.path.join(
@@ -854,7 +886,9 @@ def main():
                 target_path_list=[d_dn_raster_path],
                 dependent_task_list=[
                     fill_pits_task, flow_accum_task, d_dn_per_pixel_task],
-                task_name='d_dn_%s' % ws_prefix)
+                task_name='d_dn_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate IC
             ic_path = os.path.join(ws_working_dir, '%s_ic.tif' % ws_prefix)
@@ -865,7 +899,9 @@ def main():
                     calc_ic, ic_path, gdal.GDT_Float32, IC_NODATA),
                 target_path_list=[ic_path],
                 dependent_task_list=[d_up_task, d_dn_task],
-                task_name='ic_%s' % ws_prefix)
+                task_name='ic_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate eff_i
             downstream_ret_eff_path = os.path.join(
@@ -879,7 +915,9 @@ def main():
                 target_path_list=[downstream_ret_eff_path],
                 dependent_task_list=[
                     fill_pits_task, flow_accum_task, reclassify_eff_n_task],
-                task_name='downstream_ret_eff_%s' % ws_prefix)
+                task_name='downstream_ret_eff_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             # calculate NDR specific values
             ndr_path = os.path.join(ws_working_dir, '%s_ndr.tif' % ws_prefix)
@@ -888,9 +926,9 @@ def main():
                 args=(downstream_ret_eff_path, ic_path, K_VAL, ndr_path),
                 target_path_list=[ndr_path],
                 dependent_task_list=[downstream_ret_eff_task, ic_task],
-                task_name='ndr_task_%s' % ws_prefix)
-
-            # calculate load
+                task_name='ndr_task_%s' % ws_prefix,
+                priority=task_priority)
+            task_priority -= 1
 
             for scenario_key in ['cur', 'ssp1', 'ssp3', 'ssp5']:
                 # calculate modified load (load * precip)
@@ -907,7 +945,9 @@ def main():
                     dependent_task_list=[
                         reclassify_load_n_task,
                         path_task_id_map['ag_load_%s' % scenario_key][1]],
-                    task_name='scenario_load_%s_%s' % (ws_prefix, scenario_key))
+                    task_name='scenario_load_%s_%s' % (ws_prefix, scenario_key),
+                    priority=task_priority)
+                task_priority -= 1
 
                 # calculate modified load (load * precip)
                 modified_load_raster_path = os.path.join(
@@ -924,7 +964,9 @@ def main():
                     dependent_task_list=[
                         scenario_load_task,
                         path_task_id_map['precip_%s' % scenario_key][1]],
-                    task_name='modified_load_%s' % ws_prefix)
+                    task_name='modified_load_%s' % ws_prefix,
+                    priority=task_priority)
+                task_priority -= 1
 
                 n_export_raster_path = os.path.join(
                     ws_working_dir, '%s_%s_n_export.tif' % (
@@ -935,7 +977,9 @@ def main():
                         n_export_raster_path, gdal.GDT_Float32, NODATA,
                         [modified_load_raster_path, ndr_path]),
                     target_path_list=[n_export_raster_path],
-                    dependent_task_list=[modified_load_task, ndr_task])
+                    dependent_task_list=[modified_load_task, ndr_task],
+                    priority=task_priority)
+                task_priority -= 1
 
                 aggregate_result_task = task_graph.add_task(
                     func=aggregate_to_database,
@@ -943,7 +987,9 @@ def main():
                         n_export_raster_path, global_watershed_path, watershed_id,
                         local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
                         database_path),
-                    dependent_task_list=[n_export_task, reproject_watershed_task])
+                    dependent_task_list=[n_export_task, reproject_watershed_task],
+                    priority=task_priority)
+                task_priority -= 1
     task_graph.close()
     task_graph.join()
     # report one last time

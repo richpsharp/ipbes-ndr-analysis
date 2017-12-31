@@ -31,7 +31,7 @@ N_CPUS = 5
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
-FLOW_THRESHOLD = 1000
+FLOW_THRESHOLD = 33
 RET_LEN = 150.0
 K_VAL = 1.0
 SCENARIO_LIST = ['cur', 'ssp1', 'ssp3', 'ssp5']
@@ -78,7 +78,7 @@ def db_to_shapefile(database_path, sleep_time):
     """Converts db to shapefile every `sleep_time` seconds."""
     base_shape_name = 'results.shp'
     while True:
-        LOGGER.info("aggregating results to database")
+        LOGGER.info("reporting results")
         try:
             target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
             if os.path.exists(base_shape_name):
@@ -610,7 +610,7 @@ def main():
                 LOGGER.info("%s already reported, skipping", ws_prefix)
                 continue
             heapq.heappush(watershed_priority_queue, (
-                watershed_area, feature_centroid, global_watershed_path,
+                -watershed_area, feature_centroid, global_watershed_path,
                 watershed_id, ws_prefix))
             feature_geom = None
             watershed_feature = None
@@ -648,8 +648,7 @@ def main():
         epsg_code = int('32%d%02d' % (lat_code, utm_code))
         epsg_srs = osr.SpatialReference()
         epsg_srs.ImportFromEPSG(epsg_code)
-        utm_pixel_size = abs(dem_pixel_size[0]) * length_of_degree(
-            feature_centroid.GetY())
+        utm_pixel_size = 500 #abs(dem_pixel_size[0]) * length_of_degree(feature_centroid.GetY())
 
         local_watershed_path = os.path.join(ws_working_dir, '%s.shp' % ws_prefix)
         if os.path.exists(local_watershed_path):

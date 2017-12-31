@@ -271,105 +271,101 @@ def result_in_database(database_path, ws_prefix):
     return False
 
 
-def aggregate_to_database_wrapper():
-    database_lock = multiprocessing.Lock()
+def aggregate_to_database(
+        n_export_raster_path, global_watershed_path, global_watershed_id,
+        local_watershed_path, ws_prefix, scenario_key, aggregate_field_name,
+        database_lock, target_database_path):
+    """Aggregate nutrient load and save to database.
 
-    def _aggregate_to_database(
-            n_export_raster_path, global_watershed_path, global_watershed_id,
-            local_watershed_path, ws_prefix, scenario_key, aggregate_field_name,
-            target_database_path):
-        """Aggregate nutrient load and save to database.
+    This function creates a new database if it does not exist and aggregates
+        values and inserts a new row if the row does not already exist.
 
-        This function creates a new database if it does not exist and aggregates
-            values and inserts a new row if the row does not already exist.
+    Parameters:
+        n_export_raster_path (string): path to nutrient export raster in
+            units of kg/Ha.
+        global_watershed_path (string): path to global shapefile where
+            `feature_id` is an element. This lets us save the geometry to
+            the database.
+        global_watershed_id (int): feature id in global watershed that's
+            represented in the local watershed.
+        local_watershed_path (string): path to a locally projected shapefile
+            with the local watershed. This is used for aggregation.
+        ws_prefix (string): used to insert in databases
+        scenario_key (string): used to insert in database
+        aggregate_field_name (string): unique key in local watershed feature
+        target_database_path (string): path to SQLite Database. If not exists
+            create a table called 'nutrient_export' with fields:
+                * ws_prefix_key (string identifying unique global watershed)
+                * scenario_key (string identifying which scenario)
+                * total_export (float indicating total export from watershed)
+                * geometry (geometry saved as Wkt)
 
-        Parameters:
-            n_export_raster_path (string): path to nutrient export raster in
-                units of kg/Ha.
-            global_watershed_path (string): path to global shapefile where
-                `feature_id` is an element. This lets us save the geometry to
-                the database.
-            global_watershed_id (int): feature id in global watershed that's
-                represented in the local watershed.
-            local_watershed_path (string): path to a locally projected shapefile
-                with the local watershed. This is used for aggregation.
-            ws_prefix (string): used to insert in databases
-            scenario_key (string): used to insert in database
-            aggregate_field_name (string): unique key in local watershed feature
-            target_database_path (string): path to SQLite Database. If not exists
-                create a table called 'nutrient_export' with fields:
-                    * ws_prefix_key (string identifying unique global watershed)
-                    * scenario_key (string identifying which scenario)
-                    * total_export (float indicating total export from watershed)
-                    * geometry (geometry saved as Wkt)
+    Returns:
+        None.
+    """
+    with database_lock:
+        LOGGER.info(
+            '********* aggregating results for %s %s', ws_prefix,
+            scenario_key)
+        sql_create_projects_table = (
+            """ CREATE TABLE IF NOT EXISTS nutrient_export (
+                ws_prefix_key TEXT NOT NULL,
+                scenario_key TEXT NOT NULL,
+                total_export REAL NOT NULL,
+                geometry_wkt TEXT NOT NULL,
+                PRIMARY KEY (ws_prefix_key, scenario_key)
+            ); """)
 
-        Returns:
-            None.
-        """
-        with database_lock:
-            LOGGER.info(
-                '********* aggregating results for %s %s', ws_prefix,
-                scenario_key)
-            sql_create_projects_table = (
-                """ CREATE TABLE IF NOT EXISTS nutrient_export (
-                    ws_prefix_key TEXT NOT NULL,
-                    scenario_key TEXT NOT NULL,
-                    total_export REAL NOT NULL,
-                    geometry_wkt TEXT NOT NULL,
-                    PRIMARY KEY (ws_prefix_key, scenario_key)
-                ); """)
+        # create a database connection
+        conn = sqlite3.connect(target_database_path)
+        if conn is not None:
+            cursor = conn.cursor()
+            cursor.execute(sql_create_projects_table)
+            cursor.execute("""CREATE INDEX IF NOT EXISTS idx_nutrient_export
+                ON nutrient_export (ws_prefix_key, scenario_key);""")
 
-            # create a database connection
-            conn = sqlite3.connect(target_database_path)
-            if conn is not None:
-                cursor = conn.cursor()
-                cursor.execute(sql_create_projects_table)
-                cursor.execute("""CREATE INDEX IF NOT EXISTS idx_nutrient_export
-                    ON nutrient_export (ws_prefix_key, scenario_key);""")
+            cursor.execute(
+                """SELECT ws_prefix_key, scenario_key FROM nutrient_export
+                WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
+                    ws_prefix, scenario_key))
+            db_result = cursor.fetchone()
+            if db_result is not None:
+                # already in table, skipping
+                LOGGER.debug(
+                    "already in table %s %s %s" % (
+                        ws_prefix, scenario_key, db_result))
+                LOGGER.debug(
+                    "result of in table %s" % result_in_database(
+                        target_database_path, ws_prefix))
+                LOGGER.debug(target_database_path)
+                return
 
-                cursor.execute(
-                    """SELECT ws_prefix_key, scenario_key FROM nutrient_export
-                    WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
-                        ws_prefix, scenario_key))
-                db_result = cursor.fetchone()
-                if db_result is not None:
-                    # already in table, skipping
-                    LOGGER.debug(
-                        "already in table %s %s %s" % (
-                            ws_prefix, scenario_key, db_result))
-                    LOGGER.debug(
-                        "result of in table %s" % result_in_database(
-                            target_database_path, ws_prefix))
-                    LOGGER.debug(target_database_path)
-                    return
+            result = pygeoprocessing.zonal_statistics(
+                (n_export_raster_path, 1), local_watershed_path,
+                aggregate_field_name, polygons_might_overlap=False)
 
-                result = pygeoprocessing.zonal_statistics(
-                    (n_export_raster_path, 1), local_watershed_path,
-                    aggregate_field_name, polygons_might_overlap=False)
+            pixel_area_ha = pygeoprocessing.get_raster_info(
+                n_export_raster_path)['mean_pixel_size']**2 * 0.0001
+            total_export = result.itervalues().next()['sum'] * pixel_area_ha
 
-                pixel_area_ha = pygeoprocessing.get_raster_info(
-                    n_export_raster_path)['mean_pixel_size']**2 * 0.0001
-                total_export = result.itervalues().next()['sum'] * pixel_area_ha
-
-                global_watershed_vector = ogr.Open(global_watershed_path)
-                global_watershed_layer = global_watershed_vector.GetLayer()
-                global_watershed_feature = global_watershed_layer.GetFeature(
-                    global_watershed_id)
-                global_watershed_geom = global_watershed_feature.GetGeometryRef()
-                geometry_wkt = global_watershed_geom.ExportToWkt()
-                global_watershed_geom = None
-                global_watershed_feature = None
-                global_watershed_layer = None
-                global_watershed_vector = None
-                cursor.execute(
-                    """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
-                    (ws_prefix, scenario_key, total_export, geometry_wkt))
-                conn.commit()
-                conn.close()
-            else:
-                raise IOError(
-                    "Error! cannot create the database connection.")
-    return _aggregate_to_database
+            global_watershed_vector = ogr.Open(global_watershed_path)
+            global_watershed_layer = global_watershed_vector.GetLayer()
+            global_watershed_feature = global_watershed_layer.GetFeature(
+                global_watershed_id)
+            global_watershed_geom = global_watershed_feature.GetGeometryRef()
+            geometry_wkt = global_watershed_geom.ExportToWkt()
+            global_watershed_geom = None
+            global_watershed_feature = None
+            global_watershed_layer = None
+            global_watershed_vector = None
+            cursor.execute(
+                """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
+                (ws_prefix, scenario_key, total_export, geometry_wkt))
+            conn.commit()
+            conn.close()
+        else:
+            raise IOError(
+                "Error! cannot create the database connection.")
 
 
 def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
@@ -537,7 +533,7 @@ def main():
     except OSError:
         pass
 
-    aggregate_to_database = aggregate_to_database_wrapper()
+    database_lock = multiprocessing.Lock()
 
     # load biophysical table first, it's used a lot below
     represenative_ndr_biophysical_table_path = os.path.join(
@@ -1049,7 +1045,7 @@ def main():
                 args=(
                     n_export_raster_path, global_watershed_path, watershed_id,
                     local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
-                    database_path),
+                    database_lock, database_path),
                 dependent_task_list=[n_export_task, reproject_watershed_task],
                 priority=task_priority,
                 task_name='aggregate_result_%s_%s' % (scenario_key, ws_prefix))

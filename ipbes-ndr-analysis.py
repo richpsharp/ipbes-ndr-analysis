@@ -34,7 +34,7 @@ USE_AG_LOAD_ID = 999
 FLOW_THRESHOLD = 1000
 RET_LEN = 150.0
 K_VAL = 1.0
-
+SCENARIO_LIST = ['cur', 'ssp1', 'ssp3', 'ssp5']
 logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
     level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -78,6 +78,7 @@ def db_to_shapefile(database_path, sleep_time):
     """Converts db to shapefile every `sleep_time` seconds."""
     base_shape_name = 'results.shp'
     while True:
+        LOGGER.info("aggregating results to database")
         try:
             target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
             if os.path.exists(base_shape_name):
@@ -106,8 +107,7 @@ def db_to_shapefile(database_path, sleep_time):
             ws_field.SetWidth(24)
             result_layer.CreateField(ws_field)
 
-            scenario_list = ['cur', 'ssp1', 'ssp3', 'ssp5']
-            for scenario in scenario_list:
+            for scenario in SCENARIO_LIST:
                 scenario_field = ogr.FieldDefn('%s_n_exp' % scenario, ogr.OFTReal)
                 scenario_field.SetWidth(24)
                 scenario_field.SetPrecision(11)
@@ -128,12 +128,13 @@ def db_to_shapefile(database_path, sleep_time):
                 for ws_id, ws_geom in result:
                     feature = ogr.Feature(result_layer.GetLayerDefn())
                     feature.SetField('ws_id', ws_id)
-                    for scenario in scenario_list:
+                    for scenario in SCENARIO_LIST:
                         cursor.execute(
                             """SELECT total_export FROM nutrient_export
                             WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
                                 ws_id, scenario))
-                        feature.SetField('%s_n_exp' % scenario, cursor.fetchone()[0])
+                        result = cursor.fetchone()
+                        feature.SetField('%s_n_exp' % scenario, result[0])
                     feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
                     result_layer.CreateFeature(feature)
 
@@ -258,12 +259,15 @@ def result_in_database(database_path, ws_prefix):
     if conn is not None:
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                """SELECT ws_prefix_key FROM nutrient_export
-                WHERE (ws_prefix_key = ?)""", (ws_prefix,))
-            if cursor.fetchone() is not None:
-                # already in table, skipping
-                return True
+            for scenario in SCENARIO_LIST:
+                cursor.execute(
+                    """SELECT total_export FROM nutrient_export
+                    WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
+                        ws_prefix, scenario))
+                result = cursor.fetchone()
+                if result is None:
+                    return False
+            return True
         except sqlite3.OperationalError:
             LOGGER.exception("operational error on %s"% ws_prefix)
             return False
@@ -551,7 +555,6 @@ def main():
         TASKGRAPH_DIR, N_CPUS)
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
-
     db_to_shapefile_thread = threading.Thread(
         target=db_to_shapefile,
         args=(database_path, 60.0))
@@ -988,7 +991,7 @@ def main():
             priority=task_priority)
         task_priority -= 1
 
-        for scenario_key in ['cur', 'ssp1', 'ssp3', 'ssp5']:
+        for scenario_key in SCENARIO_LIST:
             # calculate modified load (load * precip)
             # calculate scenario AG load
             scenario_ag_load_path = os.path.join(

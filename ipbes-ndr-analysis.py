@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = 5
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -78,9 +78,6 @@ def db_to_shapefile(database_path, sleep_time):
     """Converts db to shapefile every `sleep_time` seconds."""
     base_shape_name = 'results.shp'
     while True:
-        if sleep_time < 0:
-            break
-        time.sleep(sleep_time)
         try:
             target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
             if os.path.exists(base_shape_name):
@@ -163,7 +160,6 @@ def db_to_shapefile(database_path, sleep_time):
                     "I last updated NDR results on %s.\n" % timestring +
                     "There will be an 'all done.txt' file here when everything "
                     "is done.\n")
-
         except Exception:
             LOGGER.exception(
                 "There was an exception during results reporting.")
@@ -176,6 +172,9 @@ def db_to_shapefile(database_path, sleep_time):
                 result_vector = None
             except:
                 pass
+        if sleep_time < 0:
+            break
+        time.sleep(sleep_time)
 
 
 def length_of_degree(lat):

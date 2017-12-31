@@ -533,7 +533,8 @@ def main():
     except OSError:
         pass
 
-    database_lock = multiprocessing.Lock()
+    multiprocessing_manager = multiprocessing.Manager()
+    database_lock = multiprocessing_manager.Lock()
 
     # load biophysical table first, it's used a lot below
     represenative_ndr_biophysical_table_path = os.path.join(

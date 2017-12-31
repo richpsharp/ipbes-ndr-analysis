@@ -131,10 +131,11 @@ def db_to_shapefile(database_path, sleep_time):
                     for scenario in SCENARIO_LIST:
                         cursor.execute(
                             """SELECT total_export FROM nutrient_export
-                            WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
-                                ws_id, scenario))
+                            WHERE (ws_prefix_key = ? and scenario_key = ?)""",
+                            (ws_id, scenario))
                         result = cursor.fetchone()
-                        feature.SetField('%s_n_exp' % scenario, result[0])
+                        if result is not None:
+                            feature.SetField('%s_n_exp' % scenario, result[0])
                     feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
                     result_layer.CreateFeature(feature)
 

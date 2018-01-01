@@ -351,6 +351,9 @@ def aggregate_to_database(
             pixel_area_ha = pygeoprocessing.get_raster_info(
                 n_export_raster_path)['mean_pixel_size']**2 * 0.0001
             total_export = result.itervalues().next()['sum'] * pixel_area_ha
+            # ran into case where total export was none maybe because of bad data?
+            if total_export is None:
+                total_export = -1
 
             global_watershed_vector = ogr.Open(global_watershed_path)
             global_watershed_layer = global_watershed_vector.GetLayer()

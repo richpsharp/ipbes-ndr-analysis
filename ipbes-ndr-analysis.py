@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 5
+N_CPUS = -1
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -542,6 +542,17 @@ def main():
         os.makedirs(TARGET_WORKSPACE)
     except OSError:
         pass
+
+    database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
+    db_to_shapefile(database_path, -1.0)
+    with open(
+            os.path.join(RESULTS_DIR, 'ALL_DONE.txt'), 'w') as timestamp_file:
+        timestamp_file.write(
+            "Hi, I finished the NDR analysis at %s. Check out "
+            "results.shp\n" % datetime.datetime.now().strftime(
+                "%Y-%m-%d %H_%M_%S"))
+
+    return
 
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()

@@ -109,7 +109,7 @@ def db_to_shapefile(database_path, sleep_time):
 
             for scenario in SCENARIO_LIST:
                 scenario_field = ogr.FieldDefn('%s_n_exp' % scenario, ogr.OFTReal)
-                scenario_field.SetWidth(24)
+                scenario_field.SetWidth(32)
                 scenario_field.SetPrecision(11)
                 result_layer.CreateField(scenario_field)
 
@@ -352,7 +352,7 @@ def aggregate_to_database(
                 n_export_raster_path)['mean_pixel_size']**2 * 0.0001
             total_export = result.itervalues().next()['sum'] * pixel_area_ha
             # ran into case where total export was none maybe because of bad data?
-            if total_export is None:
+            if total_export is None or math.isnan(total_export):
                 total_export = -1
 
             global_watershed_vector = ogr.Open(global_watershed_path)
@@ -365,9 +365,12 @@ def aggregate_to_database(
             global_watershed_feature = None
             global_watershed_layer = None
             global_watershed_vector = None
-            cursor.execute(
-                """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
-                (ws_prefix, scenario_key, total_export, geometry_wkt))
+            try:
+                cursor.execute(
+                    """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
+                    (ws_prefix, scenario_key, total_export, geometry_wkt))
+            except:
+                LOGGER.exception('"%s"', total_export)
             conn.commit()
             conn.close()
         else:

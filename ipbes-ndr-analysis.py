@@ -100,7 +100,7 @@ def db_to_shapefile(database_path, sleep_time):
 
             driver = gdal.GetDriverByName('ESRI Shapefile')
             result_vector = driver.Create(
-                base_shape_name 0, 0, 0, gdal.GDT_Unknown, None)
+                base_shape_name, 0, 0, 0, gdal.GDT_Unknown)
             result_layer = result_vector.CreateLayer(
                 os.path.splitext(os.path.basename(base_shape_name))[0],
                 target_sr, ogr.wkbPolygon)
@@ -1190,7 +1190,7 @@ def reproject_vector_feature(
     # create a new shapefile from the orginal_datasource
     target_driver = gdal.GetDriverByName('ESRI Shapefile')
     target_vector = target_driver.Create(
-        target_path, 0, 0, 0, gdal.GDT_Unknown, None)
+        target_path, 0, 0, 0, gdal.GDT_Unknown)
 
     layer = base_vector.GetLayer()
     layer_dfn = layer.GetLayerDefn()

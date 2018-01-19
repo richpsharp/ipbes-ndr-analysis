@@ -76,11 +76,11 @@ RTREE_PATH = 'dem_rtree'
 
 def db_to_shapefile(database_path, sleep_time):
     """Converts db to shapefile every `sleep_time` seconds."""
-    base_shape_name = 'results.shp'
+    base_shape_name = 'results_v_china.shp'
     while True:
         LOGGER.info("reporting results")
         try:
-            target_shapefile_path = os.path.join(RESULTS_DIR, 'results.shp')
+            target_shapefile_path = os.path.join(RESULTS_DIR, 'results_v_china.shp')
             if os.path.exists(base_shape_name):
                 os.remove(base_shape_name)
             try:
@@ -98,8 +98,9 @@ def db_to_shapefile(database_path, sleep_time):
             target_sr = osr.SpatialReference()
             target_sr.ImportFromEPSG(4326)
 
-            driver = ogr.GetDriverByName('ESRI Shapefile')
-            result_vector = driver.CreateDataSource(base_shape_name)
+            driver = gdal.GetDriverByName('ESRI Shapefile')
+            result_vector = driver.Create(
+                base_shape_name 0, 0, 0, gdal.GDT_Unknown, None)
             result_layer = result_vector.CreateLayer(
                 os.path.splitext(os.path.basename(base_shape_name))[0],
                 target_sr, ogr.wkbPolygon)
@@ -139,10 +140,8 @@ def db_to_shapefile(database_path, sleep_time):
                     feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
                     result_layer.CreateFeature(feature)
 
-            result_layer.SyncToDisk()
-            result_vector.SyncToDisk()
+            result_vector.FlushCache()
             result_layer = None
-            ogr.DataSource.__swig_destroy__(result_vector)
             result_vector = None
 
             for old_timestamp_file_path in glob.glob(
@@ -151,7 +150,7 @@ def db_to_shapefile(database_path, sleep_time):
             timestring = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
             timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
                 timestring))
-            for file_path in glob.glob('results.*'):
+            for file_path in glob.glob('results_v_china.*'):
                 dst_file = os.path.join(RESULTS_DIR, file_path)
                 if os.path.exists(dst_file):
                     os.remove(dst_file)
@@ -167,10 +166,8 @@ def db_to_shapefile(database_path, sleep_time):
                 "There was an exception during results reporting.")
         finally:
             try:
-                result_layer.SyncToDisk()
-                result_vector.SyncToDisk()
+                result_vector.FlushCache()
                 result_layer = None
-                ogr.DataSource.__swig_destroy__(result_vector)
                 result_vector = None
             except:
                 pass
@@ -355,7 +352,8 @@ def aggregate_to_database(
             if total_export is None or math.isnan(total_export):
                 total_export = -1
 
-            global_watershed_vector = ogr.Open(global_watershed_path)
+            global_watershed_vector = gdal.OpenEx(
+                global_watershed_path, gdal.OF_VECTOR)
             global_watershed_layer = global_watershed_vector.GetLayer()
             global_watershed_feature = global_watershed_layer.GetFeature(
                 global_watershed_id)
@@ -392,7 +390,7 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
         None.
     """
     # calculate ic_0
-    ic_raster = gdal.Open(ic_path)
+    ic_raster = gdal.OpenEx(ic_path, gdal.OF_RASTER)
     ic_min, ic_max, _, _ = ic_raster.GetRasterBand(1).GetStatistics(0, 1)
     ic_0 = (ic_max + ic_min) / 2.0
 
@@ -606,7 +604,7 @@ def main():
             'watersheds_globe_HydroSHEDS_15arcseconds', '*.shp'))
     watershed_priority_queue = []
     for global_watershed_path in global_watershed_path_list:
-        watershed_vector = ogr.Open(global_watershed_path)
+        watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         for watershed_id in xrange(watershed_layer.GetFeatureCount()):
 
@@ -1102,7 +1100,7 @@ def merge_watershed_dems(
     Returns:
         None.
     """
-    watershed_vector = ogr.Open(watershed_path)
+    watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
     watershed_layer = watershed_vector.GetLayer()
     watershed_feature = watershed_layer.GetFeature(watershed_id)
     watershed_geometry = watershed_feature.GetGeometryRef()
@@ -1173,7 +1171,7 @@ def reproject_vector_feature(
     Returns:
         None
     """
-    base_vector = ogr.Open(base_vector_path)
+    base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
 
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
@@ -1190,8 +1188,9 @@ def reproject_vector_feature(
     target_sr = osr.SpatialReference(target_wkt)
 
     # create a new shapefile from the orginal_datasource
-    target_driver = ogr.GetDriverByName('ESRI Shapefile')
-    target_vector = target_driver.CreateDataSource(target_path)
+    target_driver = gdal.GetDriverByName('ESRI Shapefile')
+    target_vector = target_driver.Create(
+        target_path, 0, 0, 0, gdal.GDT_Unknown, None)
 
     layer = base_vector.GetLayer()
     layer_dfn = layer.GetLayerDefn()

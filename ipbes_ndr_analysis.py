@@ -28,7 +28,7 @@ pyximport.install()
 import ipbes_ndr_analysis_cython
 
 N_CPUS = 4
-DRY_RUN = True
+DRY_RUN = False
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -81,7 +81,6 @@ def db_to_shapefile(database_path, sleep_time, db_to_shapefile_lock):
     """Converts db to shapefile every `sleep_time` seconds."""
     while True:
         with db_to_shapefile_lock:
-            time.sleep(sleep_time)
             LOGGER.info("reporting results")
             try:
                 target_shapefile_path = os.path.join(
@@ -177,6 +176,7 @@ def db_to_shapefile(database_path, sleep_time, db_to_shapefile_lock):
                     result_vector = None
                 except:
                     pass
+                time.sleep(sleep_time)
                 if DONE_REPORTING:
                     break
 
@@ -313,23 +313,10 @@ def aggregate_to_database(
         LOGGER.info(
             '********* aggregating results for %s %s', ws_prefix,
             scenario_key)
-        sql_create_projects_table = (
-            """ CREATE TABLE IF NOT EXISTS nutrient_export (
-                ws_prefix_key TEXT NOT NULL,
-                scenario_key TEXT NOT NULL,
-                total_export REAL NOT NULL,
-                geometry_wkt TEXT NOT NULL,
-                PRIMARY KEY (ws_prefix_key, scenario_key)
-            ); """)
-
         # create a database connection
         conn = sqlite3.connect(target_database_path)
         if conn is not None:
             cursor = conn.cursor()
-            cursor.execute(sql_create_projects_table)
-            cursor.execute("""CREATE INDEX IF NOT EXISTS idx_nutrient_export
-                ON nutrient_export (ws_prefix_key, scenario_key);""")
-
             cursor.execute(
                 """SELECT ws_prefix_key, scenario_key FROM nutrient_export
                 WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
@@ -565,6 +552,23 @@ def main():
         TASKGRAPH_DIR, N_CPUS, 5.0, DRY_RUN)
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
+
+    sql_create_projects_table = (
+        """ CREATE TABLE IF NOT EXISTS nutrient_export (
+            ws_prefix_key TEXT NOT NULL,
+            scenario_key TEXT NOT NULL,
+            total_export REAL NOT NULL,
+            geometry_wkt TEXT NOT NULL,
+            PRIMARY KEY (ws_prefix_key, scenario_key)
+        ); """)
+
+    # create a database connection
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+    cursor.execute(sql_create_projects_table)
+    cursor.execute("""CREATE INDEX IF NOT EXISTS idx_nutrient_export
+        ON nutrient_export (ws_prefix_key, scenario_key);""")
+
     db_to_shapefile_lock = threading.Lock()
     db_to_shapefile_thread = threading.Thread(
         target=db_to_shapefile,

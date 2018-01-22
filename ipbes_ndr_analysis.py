@@ -543,11 +543,10 @@ def main():
         represenative_ndr_biophysical_table_path)
     # clean up biophysical table
     biophysical_table = biophysical_table.fillna(0)
-    biophysical_table[biophysical_table['load_n'] == 'use raster'] = (
+    biophysical_table.ix[biophysical_table['load_n'] == 'use raster', 'load_n'] = (
         USE_AG_LOAD_ID)
     biophysical_table['load_n'] = biophysical_table['load_n'].apply(
         pandas.to_numeric)
-
     task_graph = taskgraph.TaskGraph(
         TASKGRAPH_DIR, N_CPUS, 5.0, DRY_RUN)
 

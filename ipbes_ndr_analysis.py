@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 4
 DRY_RUN = True
 NODATA = -1
 IC_NODATA = -9999
@@ -74,107 +74,111 @@ TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 
 RTREE_PATH = 'dem_rtree'
 
+DONE_REPORTING = False
 
-def db_to_shapefile(database_path, sleep_time):
+
+def db_to_shapefile(database_path, sleep_time, db_to_shapefile_lock):
     """Converts db to shapefile every `sleep_time` seconds."""
-    base_shape_name = 'results_v_china.shp'
     while True:
-        LOGGER.info("reporting results")
-        try:
-            target_shapefile_path = os.path.join(RESULTS_DIR, 'results_v_china.shp')
-            if os.path.exists(base_shape_name):
-                os.remove(base_shape_name)
+        with db_to_shapefile_lock:
+            time.sleep(sleep_time)
+            LOGGER.info("reporting results")
             try:
-                os.makedirs(RESULTS_DIR)
-            except OSError:
-                pass
-
-            # create a shapefile with these fields:
-            # ws_id (text)
-            # cur_n_exp
-            # ssp1_n_exp
-            # ssp3_n_exp
-            # ssp5_n_exp
-
-            target_sr = osr.SpatialReference()
-            target_sr.ImportFromEPSG(4326)
-
-            driver = gdal.GetDriverByName('ESRI Shapefile')
-            result_vector = driver.Create(
-                base_shape_name, 0, 0, 0, gdal.GDT_Unknown)
-            result_layer = result_vector.CreateLayer(
-                os.path.splitext(os.path.basename(base_shape_name))[0],
-                target_sr, ogr.wkbPolygon)
-            ws_field = ogr.FieldDefn("ws_id", ogr.OFTString)
-            ws_field.SetWidth(24)
-            result_layer.CreateField(ws_field)
-
-            for scenario in SCENARIO_LIST:
-                scenario_field = ogr.FieldDefn('%s_n_exp' % scenario, ogr.OFTReal)
-                scenario_field.SetWidth(32)
-                scenario_field.SetPrecision(11)
-                result_layer.CreateField(scenario_field)
-
-            conn = sqlite3.connect(database_path)
-            if conn is not None:
-                cursor = conn.cursor()
+                target_shapefile_path = os.path.join(
+                    RESULTS_DIR, 'jan_2018_results.shp')
+                if os.path.exists(target_shapefile_path):
+                    os.remove(target_shapefile_path)
                 try:
-                    cursor.execute(
-                        """SELECT ws_prefix_key, geometry_wkt
-                            FROM nutrient_export GROUP BY ws_prefix_key;""")
-                except sqlite3.OperationalError:
-                    LOGGER.exception('SQL Error in `db_to_shapefile')
-                    continue
+                    os.makedirs(RESULTS_DIR)
+                except OSError:
+                    pass
 
-                result = cursor.fetchall()
-                for ws_id, ws_geom in result:
-                    feature = ogr.Feature(result_layer.GetLayerDefn())
-                    feature.SetField('ws_id', ws_id)
-                    for scenario in SCENARIO_LIST:
+                # create a shapefile with these fields:
+                # ws_id (text)
+                # cur_n_exp
+                # ssp1_n_exp
+                # ssp3_n_exp
+                # ssp5_n_exp
+
+                target_sr = osr.SpatialReference()
+                target_sr.ImportFromEPSG(4326)
+
+                driver = gdal.GetDriverByName('ESRI Shapefile')
+                result_vector = driver.Create(
+                    target_shapefile_path, 0, 0, 0, gdal.GDT_Unknown)
+                result_layer = result_vector.CreateLayer(
+                    os.path.splitext(os.path.basename(target_shapefile_path))[0],
+                    target_sr, ogr.wkbPolygon)
+                ws_field = ogr.FieldDefn("ws_id", ogr.OFTString)
+                ws_field.SetWidth(24)
+                result_layer.CreateField(ws_field)
+
+                for scenario in SCENARIO_LIST:
+                    scenario_field = ogr.FieldDefn(
+                        '%s_n_exp' % scenario, ogr.OFTReal)
+                    scenario_field.SetWidth(32)
+                    scenario_field.SetPrecision(11)
+                    result_layer.CreateField(scenario_field)
+
+                conn = sqlite3.connect(database_path)
+                if conn is not None:
+                    cursor = conn.cursor()
+                    try:
                         cursor.execute(
-                            """SELECT total_export FROM nutrient_export
-                            WHERE (ws_prefix_key = ? and scenario_key = ?)""",
-                            (ws_id, scenario))
-                        result = cursor.fetchone()
-                        if result is not None:
-                            feature.SetField('%s_n_exp' % scenario, result[0])
-                    feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
-                    result_layer.CreateFeature(feature)
+                            """SELECT ws_prefix_key, geometry_wkt
+                                FROM nutrient_export GROUP BY ws_prefix_key;""")
+                    except sqlite3.OperationalError:
+                        LOGGER.exception('SQL Error in `db_to_shapefile')
+                        continue
 
-            result_vector.FlushCache()
-            result_layer = None
-            result_vector = None
+                    result = cursor.fetchall()
+                    for ws_id, ws_geom in result:
+                        feature = ogr.Feature(result_layer.GetLayerDefn())
+                        feature.SetField('ws_id', ws_id)
+                        for scenario in SCENARIO_LIST:
+                            cursor.execute(
+                                """SELECT total_export FROM nutrient_export
+                                WHERE (ws_prefix_key = ? and scenario_key = ?)""",
+                                (ws_id, scenario))
+                            result = cursor.fetchone()
+                            if result is not None:
+                                feature.SetField('%s_n_exp' % scenario, result[0])
+                        feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
+                        result_layer.CreateFeature(feature)
 
-            for old_timestamp_file_path in glob.glob(
-                    os.path.join(RESULTS_DIR, '*.txt')):
-                os.remove(old_timestamp_file_path)
-            timestring = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
-            timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
-                timestring))
-            for file_path in glob.glob('results_v_china.*'):
-                dst_file = os.path.join(RESULTS_DIR, file_path)
-                if os.path.exists(dst_file):
-                    os.remove(dst_file)
-                shutil.copy2(file_path, dst_file)
-            with open(timestamp_path, 'w') as timestamp_file:
-                timestamp_file.write(
-                    "Hi, I'm an automatically generated file.\n"
-                    "I last updated NDR results on %s.\n" % timestring +
-                    "There will be an 'all done.txt' file here when everything "
-                    "is done.\n")
-        except Exception:
-            LOGGER.exception(
-                "There was an exception during results reporting.")
-        finally:
-            try:
                 result_vector.FlushCache()
                 result_layer = None
                 result_vector = None
-            except:
-                pass
-        if sleep_time < 0:
-            break
-        time.sleep(sleep_time)
+
+                for old_timestamp_file_path in glob.glob(
+                        os.path.join(RESULTS_DIR, '*.txt')):
+                    os.remove(old_timestamp_file_path)
+                timestring = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
+                timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
+                    timestring))
+                for file_path in glob.glob('results_v_china.*'):
+                    dst_file = os.path.join(RESULTS_DIR, file_path)
+                    if os.path.exists(dst_file):
+                        os.remove(dst_file)
+                    shutil.copy2(file_path, dst_file)
+                with open(timestamp_path, 'w') as timestamp_file:
+                    timestamp_file.write(
+                        "Hi, I'm an automatically generated file.\n"
+                        "I last updated NDR results on %s.\n" % timestring +
+                        "There will be an 'all done.txt' file here when everything "
+                        "is done.\n")
+            except Exception:
+                LOGGER.exception(
+                    "There was an exception during results reporting.")
+            finally:
+                try:
+                    result_vector.FlushCache()
+                    result_layer = None
+                    result_vector = None
+                except:
+                    pass
+                if DONE_REPORTING:
+                    break
 
 
 def length_of_degree(lat):
@@ -542,17 +546,6 @@ def main():
     except OSError:
         pass
 
-    database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
-    db_to_shapefile(database_path, -1.0)
-    with open(
-            os.path.join(RESULTS_DIR, 'ALL_DONE.txt'), 'w') as timestamp_file:
-        timestamp_file.write(
-            "Hi, I finished the NDR analysis at %s. Check out "
-            "results.shp\n" % datetime.datetime.now().strftime(
-                "%Y-%m-%d %H_%M_%S"))
-
-    return
-
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()
 
@@ -572,9 +565,10 @@ def main():
         TASKGRAPH_DIR, N_CPUS, 5.0, DRY_RUN)
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
+    db_to_shapefile_lock = threading.Lock()
     db_to_shapefile_thread = threading.Thread(
         target=db_to_shapefile,
-        args=(database_path, 60.0))
+        args=(database_path, 60.0, db_to_shapefile_lock))
     db_to_shapefile_thread.daemon = True
     db_to_shapefile_thread.start()
 
@@ -1072,14 +1066,14 @@ def main():
     task_graph.close()
     task_graph.join()
     # report one last time
-    db_to_shapefile(database_path, -1.0)
+    DONE_REPORTING = True
+    db_to_shapefile(database_path, 0.0, db_to_shapefile_lock)
     with open(
             os.path.join(RESULTS_DIR, 'ALL_DONE.txt'), 'w') as timestamp_file:
         timestamp_file.write(
             "Hi, I finished the NDR analysis at %s. Check out "
             "results.shp\n" % datetime.datetime.now().strftime(
                 "%Y-%m-%d %H_%M_%S"))
-
 
 
 def merge_watershed_dems(

@@ -573,7 +573,7 @@ def main():
         target=db_to_shapefile,
         args=(database_path, 60.0, db_to_shapefile_lock))
     db_to_shapefile_thread.daemon = True
-    db_to_shapefile_thread.start()
+    #db_to_shapefile_thread.start()
 
     dem_rtree_path = os.path.join(TARGET_WORKSPACE, RTREE_PATH)
 

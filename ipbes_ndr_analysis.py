@@ -28,6 +28,7 @@ pyximport.install()
 import ipbes_ndr_analysis_cython
 
 N_CPUS = -1
+DRY_RUN = True
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -568,7 +569,7 @@ def main():
         pandas.to_numeric)
 
     task_graph = taskgraph.TaskGraph(
-        TASKGRAPH_DIR, N_CPUS)
+        TASKGRAPH_DIR, N_CPUS, 5.0, DRY_RUN)
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
     db_to_shapefile_thread = threading.Thread(

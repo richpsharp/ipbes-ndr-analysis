@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 4
 DRY_RUN = False
 NODATA = -1
 IC_NODATA = -9999
@@ -81,7 +81,7 @@ def db_to_shapefile(database_path, db_to_shapefile_lock):
         LOGGER.info("reporting results")
         try:
             target_shapefile_path = os.path.join(
-                RESULTS_DIR, 'jan_2018_results.shp')
+                RESULTS_DIR, 'jan_2018_results_v2.shp')
             if os.path.exists(target_shapefile_path):
                 os.remove(target_shapefile_path)
             try:

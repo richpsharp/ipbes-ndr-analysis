@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = -1
 DRY_RUN = False
 NODATA = -1
 IC_NODATA = -9999
@@ -641,7 +641,8 @@ def main():
         epsg_code = int('32%d%02d' % (lat_code, utm_code))
         epsg_srs = osr.SpatialReference()
         epsg_srs.ImportFromEPSG(epsg_code)
-        utm_pixel_size = 500 #abs(dem_pixel_size[0]) * length_of_degree(feature_centroid.GetY())
+        utm_pixel_size = 500.0 #abs(dem_pixel_size[0]) * length_of_degree(feature_centroid.GetY())
+        degree_pixel_size = utm_pixel_size / length_of_degree(feature_centroid.GetY())
 
         local_watershed_path = os.path.join(ws_working_dir, '%s.shp' % ws_prefix)
         if os.path.exists(local_watershed_path):
@@ -715,7 +716,7 @@ def main():
                 base_raster_path_list, aligned_path_list,
                 ['nearest', 'mode', 'nearest', 'nearest', 'nearest', 'nearest',
                  'nearest', 'nearest', 'nearest', 'nearest'],
-                dem_pixel_size, 'intersection'),
+                (degree_pixel_size, -degree_pixel_size), 'intersection'),
             target_path_list=aligned_path_list,
             dependent_task_list=[merge_watershed_dems_task],
             task_name='align_resize_task_%s' % ws_prefix,

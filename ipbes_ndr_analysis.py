@@ -27,8 +27,9 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 4
 DRY_RUN = False
+TASKGRAPH_REPORTING_FREQUENCY = 60.0
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -534,7 +535,7 @@ def main():
     biophysical_table['load_n'] = biophysical_table['load_n'].apply(
         pandas.to_numeric)
     task_graph = taskgraph.TaskGraph(
-        TASKGRAPH_DIR, N_CPUS, 5.0, DRY_RUN)
+        TASKGRAPH_DIR, N_CPUS, TASKGRAPH_REPORTING_FREQUENCY, DRY_RUN)
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
 

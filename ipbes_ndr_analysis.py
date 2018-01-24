@@ -70,7 +70,7 @@ WATERSHED_PATH_LIST = glob.glob(
         BASE_DROPBOX_DIR, 'ipbes-data',
         'watersheds_globe_HydroSHEDS_15arcseconds', '*.shp'))
 
-TARGET_WORKSPACE = 'ndr_workspace'
+TARGET_WORKSPACE = 'ndr_workspace_test_run_for_crash'
 TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 
 RTREE_PATH = 'dem_rtree'
@@ -81,7 +81,7 @@ def db_to_shapefile(database_path):
     LOGGER.info("reporting results")
     try:
         target_shapefile_path = os.path.join(
-            RESULTS_DIR, 'jan_2018_results_v2.shp')
+            TARGET_WORKSPACE, 'test_results_for_crash.shp')
         if os.path.exists(target_shapefile_path):
             os.remove(target_shapefile_path)
         try:

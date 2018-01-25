@@ -587,7 +587,8 @@ def main():
         watershed_layer = watershed_vector.GetLayer()
         for watershed_id in xrange(watershed_layer.GetFeatureCount()):
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
-
+            if ws_prefix != 'ws_as_bas_15s_beta_178015':
+                continue
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
             watershed_area = feature_geom.GetArea()
@@ -601,7 +602,7 @@ def main():
 
             if result_in_database(database_path, ws_prefix):
                 LOGGER.info("%s already reported, skipping", ws_prefix)
-                continue
+                pass #continue
             heapq.heappush(watershed_priority_queue, (
                 -watershed_area, feature_centroid, global_watershed_path,
                 watershed_id, ws_prefix))

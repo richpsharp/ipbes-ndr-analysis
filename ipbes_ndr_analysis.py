@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = -1
 DRY_RUN = False
 TASKGRAPH_REPORTING_FREQUENCY = 60.0
 NODATA = -1
@@ -391,7 +391,7 @@ def calc_ic(d_up_array, d_dn_array):
     """Calculate log_10(d_up/d_dn) unless nodata or 0."""
     result = numpy.empty_like(d_up_array)
     result[:] = NODATA
-    zero_mask = (d_dn_array == 0) || (d_up_array == 0)
+    zero_mask = (d_dn_array == 0) | (d_up_array == 0)
     valid_mask = (
         (d_up_array != NODATA) & (d_dn_array != NODATA) & (~zero_mask))
     result[valid_mask] = numpy.log10(

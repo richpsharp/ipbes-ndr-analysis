@@ -391,7 +391,7 @@ def calc_ic(d_up_array, d_dn_array):
     """Calculate log_10(d_up/d_dn) unless nodata or 0."""
     result = numpy.empty_like(d_up_array)
     result[:] = NODATA
-    zero_mask = d_dn_array == 0
+    zero_mask = (d_dn_array == 0) || (d_up_array == 0)
     valid_mask = (
         (d_up_array != NODATA) & (d_dn_array != NODATA) & (~zero_mask))
     result[valid_mask] = numpy.log10(
@@ -587,7 +587,8 @@ def main():
         watershed_layer = watershed_vector.GetLayer()
         for watershed_id in xrange(watershed_layer.GetFeatureCount()):
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
-
+            if ws_prefix != 'ws_as_bas_15s_beta_178015':
+                continue
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
             watershed_area = feature_geom.GetArea()
@@ -601,7 +602,7 @@ def main():
 
             if result_in_database(database_path, ws_prefix):
                 LOGGER.info("%s already reported, skipping", ws_prefix)
-                continue
+                pass #continue
             heapq.heappush(watershed_priority_queue, (
                 -watershed_area, feature_centroid, global_watershed_path,
                 watershed_id, ws_prefix))

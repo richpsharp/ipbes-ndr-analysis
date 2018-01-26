@@ -81,7 +81,7 @@ def db_to_shapefile(database_path):
     LOGGER.info("reporting results")
     try:
         target_shapefile_path = os.path.join(
-            RESULTS_DIR, '25_jan_2018_results.shp')
+            RESULTS_DIR, '25_jan_2018_results_ha.shp')
         if os.path.exists(target_shapefile_path):
             os.remove(target_shapefile_path)
         try:
@@ -117,13 +117,13 @@ def db_to_shapefile(database_path):
 
         for scenario in SCENARIO_LIST:
             scenario_field = ogr.FieldDefn(
-                '%s_n_exp' % scenario, ogr.OFTReal)
+                '%snex' % scenario, ogr.OFTReal)
             scenario_field.SetWidth(32)
             scenario_field.SetPrecision(11)
             result_layer.CreateField(scenario_field)
 
             scenario_field = ogr.FieldDefn(
-                '%s_n_expha' % scenario, ogr.OFTReal)
+                '%snexha' % scenario, ogr.OFTReal)
             scenario_field.SetWidth(32)
             scenario_field.SetPrecision(11)
             result_layer.CreateField(scenario_field)
@@ -155,11 +155,10 @@ def db_to_shapefile(database_path):
 
                 local_feature_geom = feature_geom.Clone()
                 coord_trans = osr.CoordinateTransformation(wgs84_sr, epsg_sr)
-                geom.Transform(coord_trans)
+                local_feature_geom.Transform(coord_trans)
 
                 # m^2 to Ha
-                feature_area_ha = local_feature_geom.GetArea() * 0.001
-                result_layer.CreateFeature(feature)
+                feature_area_ha = local_feature_geom.GetArea() * 0.0001
 
                 feature.SetField('area_ha', feature_area_ha)
 
@@ -170,10 +169,11 @@ def db_to_shapefile(database_path):
                         (ws_id, scenario))
                     result = scenaro_cursor.fetchone()
                     if result is not None:
-                        feature.SetField('%s_n_exp' % scenario, result[0])
+                        feature.SetField('%snex' % scenario, result[0])
                         feature.SetField(
-                            '%s_n_expha' % scenario, result[0] / feature_area_ha)
+                            '%snexha' % scenario, result[0] / feature_area_ha)
 
+                result_layer.CreateFeature(feature)
 
         result_vector.FlushCache()
         result_layer = None

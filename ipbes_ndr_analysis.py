@@ -96,22 +96,34 @@ def db_to_shapefile(database_path):
         # ssp3_n_exp
         # ssp5_n_exp
 
-        target_sr = osr.SpatialReference()
-        target_sr.ImportFromEPSG(4326)
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
 
         driver = gdal.GetDriverByName('ESRI Shapefile')
         result_vector = driver.Create(
             target_shapefile_path, 0, 0, 0, gdal.GDT_Unknown)
         result_layer = result_vector.CreateLayer(
             os.path.splitext(os.path.basename(target_shapefile_path))[0],
-            target_sr, ogr.wkbPolygon)
+            wgs84_sr, ogr.wkbPolygon)
         ws_field = ogr.FieldDefn("ws_id", ogr.OFTString)
         ws_field.SetWidth(24)
         result_layer.CreateField(ws_field)
 
+        area_field = ogr.FieldDefn(
+            'area_ha', ogr.OFTReal)
+        area_field.SetWidth(32)
+        area_field.SetPrecision(11)
+        result_layer.CreateField(area_field)
+
         for scenario in SCENARIO_LIST:
             scenario_field = ogr.FieldDefn(
                 '%s_n_exp' % scenario, ogr.OFTReal)
+            scenario_field.SetWidth(32)
+            scenario_field.SetPrecision(11)
+            result_layer.CreateField(scenario_field)
+
+            scenario_field = ogr.FieldDefn(
+                '%s_n_expha' % scenario, ogr.OFTReal)
             scenario_field.SetWidth(32)
             scenario_field.SetPrecision(11)
             result_layer.CreateField(scenario_field)
@@ -130,6 +142,27 @@ def db_to_shapefile(database_path):
                 feature = ogr.Feature(result_layer.GetLayerDefn())
                 feature.SetField('ws_id', ws_id)
 
+                feature_geom = ogr.CreateGeometryFromWkt(ws_geom)
+                feature.SetGeometry(feature_geom)
+                feature_centroid = feature_geom.Centroid()
+
+                utm_code = (
+                    math.floor((feature_centroid.GetX() + 180)/6) % 60) + 1
+                lat_code = 6 if feature_centroid.GetY() > 0 else 7
+                epsg_code = int('32%d%02d' % (lat_code, utm_code))
+                epsg_sr = osr.SpatialReference()
+                epsg_sr.ImportFromEPSG(epsg_code)
+
+                local_feature_geom = feature_geom.Clone()
+                coord_trans = osr.CoordinateTransformation(wgs84_sr, epsg_sr)
+                geom.Transform(coord_trans)
+
+                # m^2 to Ha
+                feature_area_ha = local_feature_geom.GetArea() * 0.001
+                result_layer.CreateFeature(feature)
+
+                feature.SetField('area_ha', feature_area_ha)
+
                 for scenario in SCENARIO_LIST:
                     scenaro_cursor.execute(
                         """SELECT total_export FROM nutrient_export
@@ -138,8 +171,9 @@ def db_to_shapefile(database_path):
                     result = scenaro_cursor.fetchone()
                     if result is not None:
                         feature.SetField('%s_n_exp' % scenario, result[0])
-                feature.SetGeometry(ogr.CreateGeometryFromWkt(ws_geom))
-                result_layer.CreateFeature(feature)
+                        feature.SetField(
+                            '%s_n_expha' % scenario, result[0] / feature_area_ha)
+
 
         result_vector.FlushCache()
         result_layer = None
@@ -587,8 +621,6 @@ def main():
         watershed_layer = watershed_vector.GetLayer()
         for watershed_id in xrange(watershed_layer.GetFeatureCount()):
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
-            if ws_prefix != 'ws_as_bas_15s_beta_178015':
-                continue
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
             watershed_area = feature_geom.GetArea()
@@ -602,7 +634,7 @@ def main():
 
             if result_in_database(database_path, ws_prefix):
                 LOGGER.info("%s already reported, skipping", ws_prefix)
-                pass #continue
+                continue
             heapq.heappush(watershed_priority_queue, (
                 -watershed_area, feature_centroid, global_watershed_path,
                 watershed_id, ws_prefix))

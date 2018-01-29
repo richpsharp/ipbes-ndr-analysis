@@ -68,8 +68,8 @@ def build_watershed_rtree(
         for watershed_id in xrange(watershed_layer.GetFeatureCount()):
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
-            ws_prefix = 'ws_%s_%d' % (
-                watershed_basename, watershed_feature.GetField('BASIN_ID'))
+            ws_prefix = 'ws_%s_%.4d' % (
+                watershed_basename, watershed_id)
 
             watershed_area = feature_geom.GetArea()
             if watershed_area < 0.03:
@@ -81,6 +81,8 @@ def build_watershed_rtree(
 
             watershed_rtree.insert(
                 0, (x_min, y_min, x_max, y_max), obj=ws_prefix)
+            print x_min, x_max, y_min, y_max, ws_prefix
+            return
             feature_geom = None
             feature_geom = None
             watershed_feature = None
@@ -124,7 +126,6 @@ def main():
                 watershed_path = os.path.join(
                     'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
                     '%s_working_dir' % watershed_id, '%s.shp' % watershed_id)
-                print watershed_path
                 if os.path.exists(watershed_path):
                     watershed_vector = gdal.OpenEx(
                         watershed_path, gdal.OF_VECTOR)
@@ -132,7 +133,7 @@ def main():
                         os.path.dirname(watershed_path),
                         'grid_clipped%s.shp' % grid_code)
                     watershed_clip_vector = esri_driver.CreateCopy(
-                        watershed_vector, local_clip_path)
+                        local_clip_path, watershed_vector)
                     watershed_clip_layer = watershed_clip_vector.GetLayer()
                     watershed_clip_feature = (
                         watershed_clip_layer.GetNextFeature())

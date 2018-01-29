@@ -91,7 +91,8 @@ def build_watershed_rtree(
             x_min, x_max, y_min, y_max = feature_geom.GetEnvelope()
 
             watershed_rtree.insert(
-                0, (x_min, y_min, x_max, y_max), obj=ws_prefix)
+                0, (x_min, y_min, x_max, y_max),
+                obj=watershed_feature.GetField('BASIN_ID'))
             feature_geom = None
             feature_geom = None
             watershed_feature = None
@@ -125,7 +126,12 @@ def main():
             (grid_bounds[0], grid_bounds[2], grid_bounds[1], grid_bounds[3]),
             objects=True))
         if results:
-            print [x.object for x in results]
+            for watershed_id in [str(x.object) for x in results]:
+                print watershed_id
+                watershed_path = os.path.join(
+                    'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
+                    '%s_working_dir', '%s.shp')
+                print watershed_path
 
 
 if __name__ == '__main__':

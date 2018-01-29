@@ -1,26 +1,13 @@
 """Script to manage NDR runs for IPBES project."""
-import heapq
-import shutil
-import time
-import datetime
-import threading
 import logging
 import os
 import glob
-import math
-import sqlite3
-import multiprocessing
 
-import taskgraph
-import numpy
-import pandas
-import dill
 import rtree.index
 from osgeo import ogr
 from osgeo import gdal
 from osgeo import osr
 import pygeoprocessing
-import pygeoprocessing.routing
 
 
 N_CPUS = -1
@@ -66,9 +53,10 @@ RTREE_PATH = 'watershed_rtree'
 def build_watershed_rtree(
         watershed_path_list, watershed_path_index_map_path):
     """Build RTree indexed by FID for points in `wwwiii_vector_path`."""
-    LOGGER.info('building rTree %s', watershed_path_index_map_path +'.dat')
+    LOGGER.info('building rTree %s', watershed_path_index_map_path + '.dat')
     if os.path.exists(watershed_path_index_map_path+'.dat'):
-        LOGGER.warn('%s exists so skipping creation.', watershed_path_index_map_path)
+        LOGGER.warn(
+            '%s exists so skipping creation.', watershed_path_index_map_path)
         return
     watershed_rtree = rtree.index.Index(watershed_path_index_map_path)
     for global_watershed_path in watershed_path_list:
@@ -116,10 +104,16 @@ def main():
 
     grid_vector = gdal.OpenEx(DEGREE_GRID_PATH, gdal.OF_VECTOR)
     grid_layer = grid_vector.GetLayer()
+
+    wgs84_srs = osr.SpatialReference()
+    wgs84_srs.ImportFromEPSG(4326)
+    esri_driver = gdal.GetDriverByName('ESRI Shapefile')
+
     while True:
         grid_feature = grid_layer.GetNextFeature()
         if not grid_feature:
             break
+        grid_code = grid_feature.GetField('GRIDCODE')
         grid_geometry = grid_feature.GetGeometryRef()
         grid_bounds = grid_geometry.GetEnvelope()
         results = list(watershed_rtree.intersection(
@@ -132,7 +126,44 @@ def main():
                     '%s_working_dir' % watershed_id, '%s.shp' % watershed_id)
                 print watershed_path
                 if os.path.exists(watershed_path):
-                    print watershed_path
+                    watershed_vector = gdal.OpenEx(
+                        watershed_path, gdal.OF_VECTOR)
+                    local_clip_path = os.path.join(
+                        os.path.dirname(watershed_path),
+                        'grid_clipped%s.shp' % grid_code)
+                    watershed_clip_vector = esri_driver.CreateCopy(
+                        watershed_vector, local_clip_path)
+                    watershed_clip_layer = watershed_clip_vector.GetLayer()
+                    watershed_clip_feature = (
+                        watershed_clip_layer.GetNextFeature())
+                    watershed_clip_geometry = (
+                        watershed_clip_feature.GetGeometryRef())
+                    watershed_clip_srs = (
+                        watershed_clip_geometry.GetSpatialReference())
+
+                    utm_to_wgs84 = osr.CoordinateTransformation(
+                        watershed_clip_srs, wgs84_srs)
+                    wgs84_to_utm = osr.CoordinateTransformation(
+                        wgs84_srs, watershed_clip_srs)
+
+                    watershed_clip_geometry.Transform(utm_to_wgs84)
+                    watershed_intersect_geom = (
+                        watershed_clip_geometry.Intersection(grid_geometry))
+                    watershed_intersect_geom.Transform(wgs84_to_utm)
+
+                    watershed_clip_feature.SetGeometry(
+                        watershed_intersect_geom)
+                    watershed_clip_layer.SetFeature(watershed_clip_feature)
+                    watershed_clip_layer.SyncToDisk()
+                    watershed_clip_geometry = None
+                    watershed_intersect_geom = None
+                    watershed_clip_feature = None
+                    watershed_clip_layer = None
+                    watershed_clip_vector = None
+                    watershed_vector = None
+
+                    print local_clip_path
+                    return
 
 
 if __name__ == '__main__':

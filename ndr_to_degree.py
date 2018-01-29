@@ -3,6 +3,7 @@ import logging
 import os
 import glob
 import sqlite3
+import multiprocessing
 
 import rtree.index
 from osgeo import ogr
@@ -111,7 +112,8 @@ def build_watershed_rtree(
 
 
 def analyze_grid(
-        grid_fid, watershed_path_index_map_path, database_path):
+        fid_queue, database_lock, watershed_path_index_map_path,
+        database_path):
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
 
@@ -124,101 +126,106 @@ def analyze_grid(
     wgs84_srs.ImportFromEPSG(4326)
     esri_driver = gdal.GetDriverByName('ESRI Shapefile')
 
-    grid_feature = grid_layer.GetFeature(grid_fid)
-    if not grid_feature:
-        return
-    grid_code = grid_feature.GetField('GRIDCODE')
-    print grid_code
-    grid_geometry = grid_feature.GetGeometryRef()
-    grid_bounds = grid_geometry.GetEnvelope()
-    results = list(watershed_rtree.intersection(
-        (grid_bounds[0], grid_bounds[2], grid_bounds[1], grid_bounds[3]),
-        objects=True))
-    if results:
-        for watershed_id in [str(x.object) for x in results]:
-            if result_in_database(database_path, grid_code, watershed_id):
-                LOGGER.debug("%s %s in database", grid_code, watershed_id)
-                continue
-            # this truncates zeros
-            shp_id = '%s%s' % (watershed_id[0:-4], int(watershed_id[-4:]))
-            watershed_path = os.path.join(
-                'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
-                '%s_working_dir' % watershed_id, '%s.shp' % shp_id)
-            if os.path.exists(watershed_path):
-                watershed_vector = gdal.OpenEx(
-                    watershed_path, gdal.OF_VECTOR)
-                watershed_layer = watershed_vector.GetLayer()
-                watershed_feature = watershed_layer.GetNextFeature()
-                watershed_geometry = watershed_feature.GetGeometryRef()
+    while True:
+        grid_fid = fid_queue.get()
+        if grid_fid == 'STOP':
+            break
+        grid_feature = grid_layer.GetFeature(grid_fid)
+        if not grid_feature:
+            return
+        grid_code = grid_feature.GetField('GRIDCODE')
+        print grid_code
+        grid_geometry = grid_feature.GetGeometryRef()
+        grid_bounds = grid_geometry.GetEnvelope()
+        results = list(watershed_rtree.intersection(
+            (grid_bounds[0], grid_bounds[2], grid_bounds[1], grid_bounds[3]),
+            objects=True))
+        if results:
+            for watershed_id in [str(x.object) for x in results]:
+                if result_in_database(database_path, grid_code, watershed_id):
+                    LOGGER.debug("%s %s in database", grid_code, watershed_id)
+                    continue
+                # this truncates zeros
+                shp_id = '%s%s' % (watershed_id[0:-4], int(watershed_id[-4:]))
+                watershed_path = os.path.join(
+                    'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
+                    '%s_working_dir' % watershed_id, '%s.shp' % shp_id)
+                if os.path.exists(watershed_path):
+                    watershed_vector = gdal.OpenEx(
+                        watershed_path, gdal.OF_VECTOR)
+                    watershed_layer = watershed_vector.GetLayer()
+                    watershed_feature = watershed_layer.GetNextFeature()
+                    watershed_geometry = watershed_feature.GetGeometryRef()
 
-                watershed_srs = (
-                    watershed_geometry.GetSpatialReference())
-                utm_to_wgs84 = osr.CoordinateTransformation(
-                    watershed_srs, wgs84_srs)
-                wgs84_to_utm = osr.CoordinateTransformation(
-                    wgs84_srs, watershed_srs)
-                watershed_geometry.Transform(utm_to_wgs84)
-                watershed_intersect_geom = (
-                    watershed_geometry.Intersection(grid_geometry))
-                fraction_covered = watershed_intersect_geom.GetArea() / (
-                    grid_geometry.GetArea())
-                if not watershed_intersect_geom.IsEmpty():
-                    local_clip_path = os.path.join(
-                        os.path.dirname(watershed_path),
-                        'grid_clipped%s.shp' % grid_code)
-                    if os.path.exists(local_clip_path):
-                        os.remove(local_clip_path)
-                    watershed_clip_vector = esri_driver.CreateCopy(
-                        local_clip_path, watershed_vector)
-                    watershed_clip_layer = watershed_clip_vector.GetLayer()
-                    watershed_clip_feature = (
-                        watershed_clip_layer.GetNextFeature())
-                    watershed_intersect_geom.Transform(wgs84_to_utm)
-                    watershed_clip_feature.SetGeometry(
-                        watershed_intersect_geom)
+                    watershed_srs = (
+                        watershed_geometry.GetSpatialReference())
+                    utm_to_wgs84 = osr.CoordinateTransformation(
+                        watershed_srs, wgs84_srs)
+                    wgs84_to_utm = osr.CoordinateTransformation(
+                        wgs84_srs, watershed_srs)
+                    watershed_geometry.Transform(utm_to_wgs84)
+                    watershed_intersect_geom = (
+                        watershed_geometry.Intersection(grid_geometry))
+                    fraction_covered = watershed_intersect_geom.GetArea() / (
+                        grid_geometry.GetArea())
+                    if not watershed_intersect_geom.IsEmpty():
+                        local_clip_path = os.path.join(
+                            os.path.dirname(watershed_path),
+                            'grid_clipped%s.shp' % grid_code)
+                        if os.path.exists(local_clip_path):
+                            os.remove(local_clip_path)
+                        watershed_clip_vector = esri_driver.CreateCopy(
+                            local_clip_path, watershed_vector)
+                        watershed_clip_layer = watershed_clip_vector.GetLayer()
+                        watershed_clip_feature = (
+                            watershed_clip_layer.GetNextFeature())
+                        watershed_intersect_geom.Transform(wgs84_to_utm)
+                        watershed_clip_feature.SetGeometry(
+                            watershed_intersect_geom)
 
-                    watershed_clip_layer.SetFeature(
-                        watershed_clip_feature)
-                    watershed_clip_layer.SyncToDisk()
-                    watershed_clip_vector.FlushCache()
+                        watershed_clip_layer.SetFeature(
+                            watershed_clip_feature)
+                        watershed_clip_layer.SyncToDisk()
+                        watershed_clip_vector.FlushCache()
+                        watershed_intersect_geom = None
+                        watershed_clip_feature = None
+                        watershed_clip_layer = None
+                        watershed_clip_vector = None
+
+                        export_values = {}
+                        for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
+                            export_path = os.path.join(
+                                os.path.dirname(watershed_path),
+                                '%s_%s_n_export.tif' % (
+                                    watershed_id, scenario_id))
+                            export_stats = pygeoprocessing.zonal_statistics(
+                                (export_path, 1), local_clip_path, 'BASIN_ID')
+                            if export_stats:
+                                export_values[scenario_id] = (
+                                    export_stats.itervalues().next()['sum'])
+                            else:
+                                break
+                        if not export_values:
+                            continue
+                        with database_lock:
+                            try:
+                                cursor.execute(
+                                    """INSERT INTO nutrient_export VALUES
+                                     (?, ?, ?, ?, ?, ?, ?)""", (
+                                         grid_code, watershed_id,
+                                         export_values['cur'],
+                                         export_values['ssp1'],
+                                         export_values['ssp3'],
+                                         export_values['ssp5'],
+                                         fraction_covered))
+                                conn.commit()
+                            except:
+                                LOGGER.exception('"%s"', shp_id)
                     watershed_intersect_geom = None
                     watershed_clip_feature = None
                     watershed_clip_layer = None
                     watershed_clip_vector = None
-
-                    export_values = {}
-                    for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
-                        export_path = os.path.join(
-                            os.path.dirname(watershed_path),
-                            '%s_%s_n_export.tif' % (
-                                watershed_id, scenario_id))
-                        export_stats = pygeoprocessing.zonal_statistics(
-                            (export_path, 1), local_clip_path, 'BASIN_ID')
-                        if export_stats:
-                            export_values[scenario_id] = (
-                                export_stats.itervalues().next()['sum'])
-                        else:
-                            break
-                    if not export_values:
-                        continue
-                    try:
-                        cursor.execute(
-                            """INSERT INTO nutrient_export VALUES
-                             (?, ?, ?, ?, ?, ?, ?)""", (
-                                 grid_code, watershed_id,
-                                 export_values['cur'],
-                                 export_values['ssp1'],
-                                 export_values['ssp3'],
-                                 export_values['ssp5'],
-                                 fraction_covered))
-                        conn.commit()
-                    except:
-                        LOGGER.exception('"%s"', shp_id)
-                watershed_intersect_geom = None
-                watershed_clip_feature = None
-                watershed_clip_layer = None
-                watershed_clip_vector = None
-                watershed_vector = None
+                    watershed_vector = None
     conn.close()
 
 
@@ -258,14 +265,25 @@ def main():
     grid_vector = gdal.OpenEx(DEGREE_GRID_PATH, gdal.OF_VECTOR)
     grid_layer = grid_vector.GetLayer()
 
+    fid_queue = multiprocessing.Queue()
+    database_lock = multiprocessing.Lock()
+
+    n_workers = 4
+    for _ in xrange(n_workers):
+        multiprocessing.Process(
+            target=analyze_grid,
+            args=(
+                fid_queue, database_lock, watershed_path_index_map_path,
+                database_path)).start()
+
     while True:
         grid_feature = grid_layer.GetNextFeature()
         if not grid_feature:
             break
+        fid_queue.put(grid_feature.GetFID())
 
-        analyze_grid(
-            grid_feature.GetFID(), watershed_path_index_map_path,
-            database_path)
+    for _ in xrange(n_workers):
+        fid_queue.put('STOP')
 
 
 if __name__ == '__main__':

@@ -51,6 +51,26 @@ TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 RTREE_PATH = 'watershed_rtree'
 
 
+def result_in_database(database_path, gridcode, ws_id):
+    """True if ws_prefix in database."""
+    conn = sqlite3.connect(database_path)
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT cur_export FROM nutrient_export
+                WHERE (GRIDCODE = ? and WS_ID = ?)""", (
+                    gridcode, ws_id))
+            result = cursor.fetchone()
+            if result is None:
+                return False
+            return True
+        except sqlite3.OperationalError:
+            LOGGER.exception("operational error on %s"% ws_prefix)
+            return False
+    return False
+
+
 def build_watershed_rtree(
         watershed_path_list, watershed_path_index_map_path):
     """Build RTree indexed by FID for points in `wwwiii_vector_path`."""
@@ -143,6 +163,9 @@ def main():
             objects=True))
         if results:
             for watershed_id in [str(x.object) for x in results]:
+                if result_in_database(database_path, grid_code, watershed_id):
+                    LOGGER.debug("%s %s in database", grid_code, watershed_id)
+                    continue
                 # this truncates zeros
                 shp_id = '%s%s' % (watershed_id[0:-4], int(watershed_id[-4:]))
                 watershed_path = os.path.join(

@@ -78,9 +78,10 @@ def build_watershed_rtree(
         watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         for watershed_id in xrange(watershed_layer.GetFeatureCount()):
-            ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
+            ws_prefix = 'ws_%s_%d' % (
+                watershed_basename, watershed_feature.GetField('BASIN_ID'))
 
             watershed_area = feature_geom.GetArea()
             if watershed_area < 0.03:
@@ -91,8 +92,7 @@ def build_watershed_rtree(
             x_min, x_max, y_min, y_max = feature_geom.GetEnvelope()
 
             watershed_rtree.insert(
-                0, (x_min, y_min, x_max, y_max),
-                obj=watershed_feature.GetField('BASIN_ID'))
+                0, (x_min, y_min, x_max, y_max), obj=ws_prefix)
             feature_geom = None
             feature_geom = None
             watershed_feature = None
@@ -127,11 +127,12 @@ def main():
             objects=True))
         if results:
             for watershed_id in [str(x.object) for x in results]:
-                print watershed_id
                 watershed_path = os.path.join(
                     'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
-                    '%s_working_dir', '%s.shp')
+                    '%s_working_dir' % watershed_id, '%s.shp' % watershed_id)
                 print watershed_path
+                if os.path.exists(watershed_path):
+                    print watershed_path
 
 
 if __name__ == '__main__':

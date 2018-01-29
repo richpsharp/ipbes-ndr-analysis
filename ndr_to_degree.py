@@ -161,6 +161,21 @@ def main():
                         watershed_clip_layer.SetFeature(
                             watershed_clip_feature)
                         watershed_clip_layer.SyncToDisk()
+                        watershed_clip_vector.FlushCache()
+                        #ogr.__swig_destroy__(watershed_clip_vector)
+                        watershed_intersect_geom = None
+                        watershed_clip_feature = None
+                        watershed_clip_layer = None
+                        watershed_clip_vector = None
+
+                        for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
+                            export_path = os.path.join(
+                                os.path.dirname(watershed_path),
+                                '%s_%s_n_export.tif' % (
+                                    watershed_id, scenario_id))
+                            export_stats = pygeoprocessing.zonal_statistics(
+                                (export_path, 1), local_clip_path, 'BASIN_ID')
+                            print export_stats
                         print local_clip_path
                         return
                     watershed_clip_geometry = None

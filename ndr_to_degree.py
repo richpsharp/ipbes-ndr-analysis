@@ -2,6 +2,7 @@
 import logging
 import os
 import glob
+import sqlite3
 
 import rtree.index
 from osgeo import ogr
@@ -94,6 +95,26 @@ def main():
         os.makedirs(TARGET_WORKSPACE)
     except OSError:
         pass
+
+    database_path = os.path.join(
+        TARGET_WORKSPACE, 'ndr_to_degree.db')
+
+    sql_create_projects_table = (
+        """ CREATE TABLE IF NOT EXISTS nutrient_export (
+            GRIDCODE TEXT NOT NULL,
+            WS_ID TEXT NOT NULL,
+            cur_export REAL NOT NULL,
+            ssp1_export REAL NOT NULL,
+            ssp3_export REAL NOT NULL,
+            ssp5_export REAL NOT NULL,
+            fraction_covered REAL NOT NULL
+        ); """)
+
+    # create a database connection
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+    cursor.execute(sql_create_projects_table)
+
     watershed_path_index_map_path = os.path.join(
         TARGET_WORKSPACE, 'watershed_rtree')
     print WATERSHED_PATH_LIST
@@ -126,7 +147,6 @@ def main():
                 watershed_path = os.path.join(
                     'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
                     '%s_working_dir' % watershed_id, '%s.shp' % shp_id)
-                print watershed_path
                 if os.path.exists(watershed_path):
                     watershed_vector = gdal.OpenEx(
                         watershed_path, gdal.OF_VECTOR)
@@ -143,6 +163,8 @@ def main():
                     watershed_geometry.Transform(utm_to_wgs84)
                     watershed_intersect_geom = (
                         watershed_geometry.Intersection(grid_geometry))
+                    fraction_covered = watershed_intersect_geom.GetArea() / (
+                        grid_geometry.GetArea())
                     if not watershed_intersect_geom.IsEmpty():
                         local_clip_path = os.path.join(
                             os.path.dirname(watershed_path),
@@ -162,12 +184,12 @@ def main():
                             watershed_clip_feature)
                         watershed_clip_layer.SyncToDisk()
                         watershed_clip_vector.FlushCache()
-                        #ogr.__swig_destroy__(watershed_clip_vector)
                         watershed_intersect_geom = None
                         watershed_clip_feature = None
                         watershed_clip_layer = None
                         watershed_clip_vector = None
 
+                        export_values = {}
                         for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
                             export_path = os.path.join(
                                 os.path.dirname(watershed_path),
@@ -175,15 +197,33 @@ def main():
                                     watershed_id, scenario_id))
                             export_stats = pygeoprocessing.zonal_statistics(
                                 (export_path, 1), local_clip_path, 'BASIN_ID')
-                            print export_stats
-                        print local_clip_path
-                        return
+                            if export_stats:
+                                export_values[scenario_id] = (
+                                    export_stats.itervalues().next()['sum'])
+                            else:
+                                break
+                        if not export_values:
+                            continue
+                        try:
+                            cursor.execute(
+                                """INSERT INTO nutrient_export VALUES
+                                 (?, ?, ?, ?, ?, ?, ?)""", (
+                                     grid_code, watershed_id,
+                                     export_values['cur'],
+                                     export_values['ssp1'],
+                                     export_values['ssp3'],
+                                     export_values['ssp5'],
+                                     fraction_covered))
+                            conn.commit()
+                        except:
+                            LOGGER.exception('"%s"', shp_id)
                     watershed_clip_geometry = None
                     watershed_intersect_geom = None
                     watershed_clip_feature = None
                     watershed_clip_layer = None
                     watershed_clip_vector = None
                     watershed_vector = None
+    conn.close()
 
 
 if __name__ == '__main__':

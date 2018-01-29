@@ -585,8 +585,6 @@ def main():
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
     cursor.execute(sql_create_projects_table)
-    cursor.execute("""CREATE INDEX IF NOT EXISTS idx_nutrient_export
-        ON nutrient_export (ws_prefix_key, scenario_key);""")
 
     dem_rtree_path = os.path.join(TARGET_WORKSPACE, RTREE_PATH)
 

@@ -135,6 +135,7 @@ def main():
         if not grid_feature:
             break
         grid_code = grid_feature.GetField('GRIDCODE')
+        print grid_code
         grid_geometry = grid_feature.GetGeometryRef()
         grid_bounds = grid_geometry.GetEnvelope()
         results = list(watershed_rtree.intersection(

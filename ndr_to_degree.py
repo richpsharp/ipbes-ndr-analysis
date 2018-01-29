@@ -81,8 +81,6 @@ def build_watershed_rtree(
 
             watershed_rtree.insert(
                 0, (x_min, y_min, x_max, y_max), obj=ws_prefix)
-            print x_min, x_max, y_min, y_max, ws_prefix
-            return
             feature_geom = None
             feature_geom = None
             watershed_feature = None
@@ -123,15 +121,20 @@ def main():
             objects=True))
         if results:
             for watershed_id in [str(x.object) for x in results]:
+                # this truncates zeros
+                shp_id = '%s%s' % (watershed_id[0:-4], int(watershed_id[-4:]))
                 watershed_path = os.path.join(
                     'ndr_workspace', '/'.join(reversed(watershed_id[-4:])),
-                    '%s_working_dir' % watershed_id, '%s.shp' % watershed_id)
+                    '%s_working_dir' % watershed_id, '%s.shp' % shp_id)
+                print watershed_path
                 if os.path.exists(watershed_path):
                     watershed_vector = gdal.OpenEx(
                         watershed_path, gdal.OF_VECTOR)
                     local_clip_path = os.path.join(
                         os.path.dirname(watershed_path),
                         'grid_clipped%s.shp' % grid_code)
+                    if os.path.exists(local_clip_path):
+                        os.remove(local_clip_path)
                     watershed_clip_vector = esri_driver.CreateCopy(
                         local_clip_path, watershed_vector)
                     watershed_clip_layer = watershed_clip_vector.GetLayer()
@@ -150,12 +153,15 @@ def main():
                     watershed_clip_geometry.Transform(utm_to_wgs84)
                     watershed_intersect_geom = (
                         watershed_clip_geometry.Intersection(grid_geometry))
-                    watershed_intersect_geom.Transform(wgs84_to_utm)
+                    if not watershed_intersect_geom.IsEmpty():
+                        watershed_intersect_geom.Transform(wgs84_to_utm)
 
-                    watershed_clip_feature.SetGeometry(
-                        watershed_intersect_geom)
-                    watershed_clip_layer.SetFeature(watershed_clip_feature)
-                    watershed_clip_layer.SyncToDisk()
+                        watershed_clip_feature.SetGeometry(
+                            watershed_intersect_geom)
+                        watershed_clip_layer.SetFeature(watershed_clip_feature)
+                        watershed_clip_layer.SyncToDisk()
+                        print local_clip_path
+                        return
                     watershed_clip_geometry = None
                     watershed_intersect_geom = None
                     watershed_clip_feature = None
@@ -163,7 +169,6 @@ def main():
                     watershed_clip_vector = None
                     watershed_vector = None
 
-                    print local_clip_path
                     return
 
 

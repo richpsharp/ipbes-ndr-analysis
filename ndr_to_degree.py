@@ -68,7 +68,7 @@ def result_in_database(database_path, gridcode, ws_id):
                 return False
             return True
         except sqlite3.OperationalError:
-            LOGGER.exception("operational error on %s"% ws_prefix)
+            LOGGER.exception("operational error on %s" % ws_id)
             return False
     return False
 

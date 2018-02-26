@@ -60,7 +60,7 @@ def result_in_database(database_path, gridcode, ws_id):
             cursor = conn.cursor()
             print gridcode, ws_id
             cursor.execute(
-                """SELECT cur_export FROM nutrient_export
+                """SELECT cur_n_export FROM nutrient_export
                 WHERE (GRIDCODE = ? and WS_ID = ?)""", (
                     gridcode, ws_id))
             result = cursor.fetchone()

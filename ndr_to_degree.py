@@ -193,10 +193,12 @@ def analyze_grid(
                         watershed_clip_vector = None
 
                         export_values = {}
-                        for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
+                        for scenario_id in [
+                                'cur_n_export', 'ssp1_n_export', 'ssp3_n_export', 'ssp5_n_export',
+                                'cur_modified_load', 'ssp1_modified_load', 'ssp3_modified_load', 'ssp5_modified_load',]:
                             export_path = os.path.join(
                                 os.path.dirname(watershed_path),
-                                '%s_%s_n_export.tif' % (
+                                '%s_%s.tif' % (
                                     watershed_id, scenario_id))
                             export_stats = pygeoprocessing.zonal_statistics(
                                 (export_path, 1), local_clip_path, 'BASIN_ID')
@@ -211,12 +213,16 @@ def analyze_grid(
                             try:
                                 cursor.execute(
                                     """INSERT INTO nutrient_export VALUES
-                                     (?, ?, ?, ?, ?, ?, ?)""", (
+                                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
                                          grid_code, watershed_id,
-                                         export_values['cur'],
-                                         export_values['ssp1'],
-                                         export_values['ssp3'],
-                                         export_values['ssp5'],
+                                         export_values['cur_n_export'],
+                                         export_values['ssp1_n_export'],
+                                         export_values['ssp3_n_export'],
+                                         export_values['ssp5_n_export'],
+                                         export_values['cur_modified_load'],
+                                         export_values['ssp1_modified_load'],
+                                         export_values['ssp3_modified_load'],
+                                         export_values['ssp5_modified_load'],
                                          fraction_covered))
                                 conn.commit()
                             except:
@@ -243,10 +249,14 @@ def main():
         """ CREATE TABLE IF NOT EXISTS nutrient_export (
             GRIDCODE TEXT NOT NULL,
             WS_ID TEXT NOT NULL,
-            cur_export REAL NOT NULL,
-            ssp1_export REAL NOT NULL,
-            ssp3_export REAL NOT NULL,
-            ssp5_export REAL NOT NULL,
+            cur_n_export REAL NOT NULL,
+            ssp1_n_export REAL NOT NULL,
+            ssp3_n_export REAL NOT NULL,
+            ssp5_n_export REAL NOT NULL,
+            cur_modified_load REAL NOT NULL,
+            ssp1_modified_load REAL NOT NULL,
+            ssp3_modified_load REAL NOT NULL,
+            ssp5_modified_load REAL NOT NULL,
             fraction_covered REAL NOT NULL
         ); """)
 

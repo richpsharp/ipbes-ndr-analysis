@@ -53,16 +53,19 @@ def main():
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
 
-    for summary_field in ['cur', 'ssp1', 'ssp3', 'ssp5']:
+    for summary_field in [
+            'cur_n_export', 'ssp1_n_export', 'ssp3_n_export', 'ssp5_n_export',
+            'cur_modified_load', 'ssp1_modified_load', 'ssp3_modified_load',
+            'ssp5_modified_load']:
         print 'summary %s' % summary_field
         n_export_degree_path = os.path.join(
-            TARGET_WORKSPACE, 'n_export%s_degree.tif' % summary_field)
+            TARGET_WORKSPACE, '%s_degree.tif' % summary_field)
         wgs84_sr = osr.SpatialReference()
         wgs84_sr.ImportFromEPSG(4326)
         driver = gdal.GetDriverByName('GTiff')
         print 'create raster'
         summary_raster = driver.Create(
-            n_export_degree_path, 361, 181, 1, gdal.GDT_Float32)
+            n_export_degree_path, 361, 181, 1, gdal.GDT_Float64)
         summary_raster.SetProjection(wgs84_sr.ExportToWkt())
         wgs84_gt = [-180.0, 1.0, 0, 90., 0, -1]
         summary_raster.SetGeoTransform(wgs84_gt)
@@ -77,11 +80,17 @@ def main():
         cursor.execute(
             "SELECT SUM(%s), SUM(fraction_covered), GRIDCODE "
             "from nutrient_export group by GRIDCODE" % (
-                '%s_export' % summary_field))
+                '%s' % summary_field))
 
         for result in cursor:
-            print result[0], result[1], result[2]
-        break
+            gridcode = int(result[2])
+            fraction_covered = float(result[1])
+            export_sum = float(result[0])
+            ix = (gridcode-1) % 360
+            iy = (gridcode-1) // 360
+            if fraction_covered != 0.0:
+                base_array[iy, ix] = export_sum / fraction_covered
+        summary_band.WriteArray(base_array)
     conn.close()
 
 

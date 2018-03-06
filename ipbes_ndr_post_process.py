@@ -93,6 +93,19 @@ class PropDiff(object):
         return result
 
 
+class Log(object):
+    """log(val)"""
+    def __init__(self, path):
+        self.nodata = pygeoprocessing.get_raster_info(path)['nodata'][0]
+
+    def __call__(self, val):
+        result = numpy.empty_like(val)
+        result[:] = NODATA
+        valid_mask = (val != self.nodata) &  (val > 0)
+        result[valid_mask] = numpy.log(val[valid_mask])
+        return result
+
+
 def main():
     """
     SvNEx_[cur|ssp[1|3|5]] = [cur|ssp[1|3|5]]_service / [cur|ssp[1|3|5]]_n_export
@@ -250,12 +263,13 @@ def main():
             task_name='cpSvNEx_%s' % scenario_id)
 
     # logrurpop_[cur|ssp[1|3|5]] = log(cur|ssp[1|3|5]_gpwpop_rural_degree)
+    logrurpop_path_task_map = {}
     for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
         logrurpop_path = os.path.join(
             WORKSPACE_DIR, 'logrurpop_%s' % scenario_id)
 
         gwppop_rural_path = gpw_rescale_path_task_map[scenario_id][0]
-        task_graph.add_task(
+        task = task_graph.add_task(
             func=pygeoprocessing.raster_calculator,
             args=(
                 [(gwppop_rural_path, 1)], Log(gwppop_rural_path),
@@ -263,8 +277,12 @@ def main():
             target_path_list=[logrurpop_path],
             dependent_task_list=[gpw_rescale_path_task_map[scenario_id][1]],
             task_name='logrurpop_%s' % scenario_id)
+        logrurpop_path_task_map[scenario_id] = (
+            logrurpop_path, task)
 
     # clogrurpop = (logrurpop_ssp[1|3|5] - logrurpop_cur)/logrurpop_cur
+    for scenario_id in ['ssp1', 'ssp3', 'ssp5']:
+        pass
     # cNEx_ssp[1|3|5] = NEx_ssp[1|3|5]] - NEx_cur) / NEx_cur
     # pcNEx__[ssp[1|3|5] = logrurpop_[cur|ssp[1|3|5]] * cNEx__[ssp[1|3|5]
     # pcSvNEx_[ssp[1|3|5]= logrurpop_[cur|ssp[1|3|5]] * cSvNEx_[ssp[1|3|5]

@@ -265,6 +265,8 @@ def main():
             task_name='cpSvNEx_%s' % scenario_id)
 
     # logrurpop_[cur|ssp[1|3|5]] = log(cur|ssp[1|3|5]_gpwpop_rural_degree)
+    # logpNEx_[cur|ssp[1|3|5]] = logrurpop_[cur|ssp[1|3|5]] * [cur|ssp[1|3|5]]_n_export_degree
+    # logpSvNEx_[cur|ssp[1|3|5]] = logrurpop_[cur|ssp[1|3|5]] * SvNEx_[cur|ssp[1|3|5]
     logrurpop_path_task_map = {}
     for scenario_id in ['cur', 'ssp1', 'ssp3', 'ssp5']:
         logrurpop_path = os.path.join(
@@ -281,6 +283,35 @@ def main():
             task_name='logrurpop_%s' % scenario_id)
         logrurpop_path_task_map[scenario_id] = (
             logrurpop_path, task)
+
+        logpNEx_path = os.path.join(
+            WORKSPACE_DIR, 'logpNEx_%s.tif' % scenario_id)
+        n_export_path = os.path.join(
+            BASE_DROPBOX_DIR, 'ipbes stuff', 'ipbes_ndr_results',
+            'n_export_and_n_load_tifs_at_degree',
+            '%s_n_export_degree.tif' % scenario_id)
+        task = task_graph.add_task(
+            func=pygeoprocessing.raster_calculator,
+            args=(
+                [(logrurpop_path, 1), (n_export_path, 1)],
+                Mult(logrurpop_path, n_export_path), logpNEx_path,
+                gdal.GDT_Float32, NODATA),
+            target_path_list=[logpNEx_path],
+            dependent_task_list=[task],
+            task_name='logpNEx_%s' % scenario_id)
+
+        logpSvNEx_path = os.path.join(
+            WORKSPACE_DIR, 'logpSvNEx_%s.tif' % scenario_id)
+        svnex_path = svnex_path_tasks[scenario_id][0]
+        task = task_graph.add_task(
+            func=pygeoprocessing.raster_calculator,
+            args=(
+                [(logrurpop_path, 1), (svnex_path, 1)],
+                Mult(logrurpop_path, svnex_path), logpSvNEx_path,
+                gdal.GDT_Float32, NODATA),
+            target_path_list=[logpSvNEx_path],
+            dependent_task_list=[svnex_path_tasks[scenario_id][1]],
+            task_name='logpSvNEx_%s' % scenario_id)
 
     # clogrurpop = (logrurpop_ssp[1|3|5] - logrurpop_cur)/logrurpop_cur
     for scenario_id in ['ssp1', 'ssp3', 'ssp5']:
@@ -301,30 +332,36 @@ def main():
                 logrurpop_path_task_map['cur'][1]],
             task_name='clogrurpop_%s' % scenario_id)
 
+    # TODO: i don't know where NEx comes from...
     # cNEx_ssp[1|3|5] = (NEx_ssp[1|3|5]] - NEx_cur) / NEx_cur
     cnex_path_task_map = {}
     for scenario_id in ['ssp1', 'ssp3', 'ssp5']:
         cNEx_path = os.path.join(
             WORKSPACE_DIR, 'cNEx_%s.tif' % scenario_id)
 
-        NEx_ssp_path = NEx_path_task_map[scenario_id][0]
-        NEx_cur_path = NEx_path_task_map['cur'][0]
+        n_export_path = os.path.join(
+            BASE_DROPBOX_DIR, 'ipbes stuff', 'ipbes_ndr_results',
+            'n_export_and_n_load_tifs_at_degree',
+            '%s_n_export_degree.tif' % scenario_id)
+
+        cur_n_export_path = os.path.join(
+            BASE_DROPBOX_DIR, 'ipbes stuff', 'ipbes_ndr_results',
+            'n_export_and_n_load_tifs_at_degree',
+            'cur_n_export_degree.tif')
+
         task = task_graph.add_task(
             func=pygeoprocessing.raster_calculator,
             args=(
-                [(NEx_cur_path, 1), (NEx_ssp_path, 1)], PropDiff(
-                    NEx_cur_path, NEx_ssp_path), cNEx_path,
+                [(cur_n_export_path, 1), (n_export_path, 1)], PropDiff(
+                    cur_n_export_path, n_export_path), cNEx_path,
                 gdal.GDT_Float32, NODATA),
             target_path_list=[cNEx_path],
-            dependent_task_list=[
-                NEx_path_task_map[scenario_id][1],
-                NEx_path_task_map['cur'][1]],
             task_name='NEx_%s' % scenario_id)
-        cnex_path_task_map[scenario_id] = (cNex_path, task)
+        cnex_path_task_map[scenario_id] = (cNEx_path, task)
 
     # pcNEx_[ssp[1|3|5] = logrurpop_[cur|ssp[1|3|5]] * cNEx__[ssp[1|3|5]
     for scenario_id in ['ssp1', 'ssp3', 'ssp5']:
-        logrurpop_path = logrurpop_path_tasks[scenario_id][0]
+        logrurpop_path = logrurpop_path_task_map[scenario_id][0]
         cNex_path = cnex_path_task_map[scenario_id][0]
         pcNEx_path = os.path.join(
             WORKSPACE_DIR, 'pcNEx_%s.tif' % scenario_id)
@@ -337,13 +374,13 @@ def main():
                 gdal.GDT_Float32, NODATA),
             target_path_list=[pcNEx_path],
             dependent_task_list=[
-                logrurpop_path_tasks[scenario_id][1],
+                logrurpop_path_task_map[scenario_id][1],
                 cnex_path_task_map[scenario_id][1]],
             task_name='pcNEx_%s' % scenario_id)
 
     # pcSvNEx_[ssp[1|3|5]= logrurpop_[cur|ssp[1|3|5]] * cSvNEx_[ssp[1|3|5]
     for scenario_id in ['ssp1', 'ssp3', 'ssp5']:
-        logrurpop_path = logrurpop_path_tasks[scenario_id][0]
+        logrurpop_path = logrurpop_path_task_map[scenario_id][0]
         cSvNEx_path = cSvNEx_path_task_map[scenario_id][0]
         pcSvNEx_path = os.path.join(
             WORKSPACE_DIR, 'pcSvNEx_%s.tif' % scenario_id)
@@ -356,7 +393,7 @@ def main():
                 gdal.GDT_Float32, NODATA),
             target_path_list=[pcSvNEx_path],
             dependent_task_list=[
-                logrurpop_path_tasks[scenario_id][1],
+                logrurpop_path_task_map[scenario_id][1],
                 cSvNEx_path_task_map[scenario_id][1]],
             task_name='pcSvNEx_%s' % scenario_id)
 

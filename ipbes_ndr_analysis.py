@@ -51,6 +51,7 @@ LOGGER = logging.getLogger('ipbes_ndr_analysis')
 TARGET_WORKSPACE = 'ndr_workspace'
 TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
 RTREE_PATH = 'dem_rtree'
+IAM_TOKEN_PATH ='ecoshard-202992-key.json'
 
 
 def db_to_shapefile(database_path):
@@ -547,13 +548,42 @@ def main():
     task_graph = taskgraph.TaskGraph(
         TASKGRAPH_DIR, N_CPUS, TASKGRAPH_REPORTING_FREQUENCY, DRY_RUN)
 
+    watersheds_archive_path = os.path.join(
+        TARGET_WORKSPACE,
+        'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4')
 
-reproduce.utils.google_bucket_fetch_and_validate(
-    r'reproduce-test', r'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip', r'D:\rpsharp_documents\bitbucket_repos\reproduce\ecoshard-202992-key.json', r'download_dir\watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip')
-reproduce.utils.google_bucket_fetch_and_validate(
-    r'reproduce-test', r'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv', r'D:\rpsharp_documents\bitbucket_repos\reproduce\ecoshard-202992-key.json', r'download_dir\NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
-reproduce.utils.google_bucket_fetch_and_validate(
-    r'reproduce-test', r'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip', r'D:\rpsharp_documents\bitbucket_repos\reproduce\ecoshard-202992-key.json', r'download_dir\global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
+    task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'reproduce-test', 'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
+            IAM_TOKEN_PATH, watersheds_archive_path),
+        target_path_list=[watersheds_archive_path],
+        task_name='download watersheds')
+
+    biophysical_table_path = os.path.join(
+        TARGET_WORKSPACE, 'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
+    task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'reproduce-test',
+            'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv',
+            IAM_TOKEN_PATH, biophysical_table_path),
+        target_path_list=[biophysical_table_path],
+        task_name='download biophysical table')
+
+    global_dem_archive_path = os.path.join(
+        TARGET_WORKSPACE, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
+    task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'reproduce-test',
+            'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip',
+            IAM_TOKEN_PATH, global_dem_archive_path),
+        target_path_list=[global_dem_archive_path],
+        task_name='download dem archive')
+
+    task_graph.close()
+    task_graph.join()
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
 

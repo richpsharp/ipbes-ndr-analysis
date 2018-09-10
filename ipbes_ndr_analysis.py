@@ -11,6 +11,7 @@ import math
 import sqlite3
 import multiprocessing
 
+import reproduce.utils
 import taskgraph
 import numpy
 import pandas
@@ -47,32 +48,8 @@ formatter = logging.Formatter(
 hdlr.setFormatter(formatter)
 LOGGER = logging.getLogger('ipbes_ndr_analysis')
 
-POSSIBLE_DROPBOX_LOCATIONS = [
-    r'D:\Dropbox',
-    r'C:\Users\Rich\Dropbox',
-    r'C:\Users\rpsharp\Dropbox',
-    r'E:\Dropbox']
-
-LOGGER.info("checking dropbox locations")
-for dropbox_path in POSSIBLE_DROPBOX_LOCATIONS:
-    print dropbox_path
-    if os.path.exists(dropbox_path):
-        BASE_DROPBOX_DIR = dropbox_path
-        break
-LOGGER.info("found %s", BASE_DROPBOX_DIR)
-
-RESULTS_DIR = os.path.join(
-    BASE_DROPBOX_DIR, 'rps_bck_shared_stuff', 'ipbes stuff',
-    'ipbes_ndr_results')
-
-WATERSHED_PATH_LIST = glob.glob(
-    os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'watersheds_globe_HydroSHEDS_15arcseconds', '*.shp'))
-
 TARGET_WORKSPACE = 'ndr_workspace'
 TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
-
 RTREE_PATH = 'dem_rtree'
 
 
@@ -81,11 +58,11 @@ def db_to_shapefile(database_path):
     LOGGER.info("reporting results")
     try:
         target_shapefile_path = os.path.join(
-            RESULTS_DIR, '25_jan_2018_results_ha.shp')
+            TASKGRAPH_DIR, '25_jan_2018_results_ha.gpkg')
         if os.path.exists(target_shapefile_path):
             os.remove(target_shapefile_path)
         try:
-            os.makedirs(RESULTS_DIR)
+            os.makedirs(TASKGRAPH_DIR)
         except OSError:
             pass
 
@@ -569,6 +546,14 @@ def main():
         pandas.to_numeric)
     task_graph = taskgraph.TaskGraph(
         TASKGRAPH_DIR, N_CPUS, TASKGRAPH_REPORTING_FREQUENCY, DRY_RUN)
+
+
+reproduce.utils.google_bucket_fetch_and_validate(
+    r'reproduce-test', r'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip', r'D:\rpsharp_documents\bitbucket_repos\reproduce\ecoshard-202992-key.json', r'download_dir\watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip')
+reproduce.utils.google_bucket_fetch_and_validate(
+    r'reproduce-test', r'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv', r'D:\rpsharp_documents\bitbucket_repos\reproduce\ecoshard-202992-key.json', r'download_dir\NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
+reproduce.utils.google_bucket_fetch_and_validate(
+    r'reproduce-test', r'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip', r'D:\rpsharp_documents\bitbucket_repos\reproduce\ecoshard-202992-key.json', r'download_dir\global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
 

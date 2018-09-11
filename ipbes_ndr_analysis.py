@@ -40,8 +40,11 @@ K_VAL = 1.0
 SCENARIO_LIST = ['cur', 'ssp1', 'ssp3', 'ssp5']
 
 logging.basicConfig(
-    format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
-    level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
+    level=logging.DEBUG,
+    format=(
+        '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
+        ' [%(pathname)s.%(funcName)s:%(lineno)d] %(message)s'),
+    stream=sys.stdout)
 LOGGER = logging.getLogger(__name__)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'
@@ -552,6 +555,9 @@ def main(iam_token_path, workspace_dir):
         target_path_list=[watersheds_touch_file_path],
         dependent_task_list=[fetch_watersheds_task],
         task_name=f'unzip watersheds_globe_HydroSHEDS_15arcseconds')
+    # this will be where all the watersheds unzip
+    watersheds_dir_path = os.path.join(
+        churn_dir, 'watersheds_globe_HydroSHEDS_15arcseconds')
 
     biophysical_table_path = os.path.join(
         downloads_dir, 'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
@@ -604,26 +610,23 @@ def main(iam_token_path, workspace_dir):
         dependent_task_list=[unzip_dem_task],
         task_name='build_raster_rtree')
 
-    task_graph.close()
-    task_graph.join()
-
+    unzip_watersheds_task.join()
+    watersheds_dir_path
     global_watershed_path_list = glob.glob(
-        os.path.join(
-            BASE_DROPBOX_DIR, 'ipbes-data',
-            'watersheds_globe_HydroSHEDS_15arcseconds', '*.shp'))
-    watershed_priority_queue = []
+        os.path.join(watersheds_dir_path, '*.shp'))
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
         watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
-        for watershed_id in range(watershed_layer.GetFeatureCount()):
+        for watershed_feature in watershed_layer:
+            watershed_id = watershed_feature.GetFID()
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
             watershed_area = feature_geom.GetArea()
             if watershed_area < 0.03:
-                #  0.04 square degrees is a healthy underapproximation of
+                #  0.03 square degrees is a healthy underapproximation of
                 # 100 sq km which is about the minimum watershed size we'd
                 # want.
                 continue
@@ -1078,16 +1081,9 @@ def main(iam_token_path, workspace_dir):
                 priority=task_priority,
                 task_name='aggregate_result_%s_%s' % (scenario_key, ws_prefix))
             task_priority -= 1
+
     task_graph.close()
     task_graph.join()
-    # report one last time
-    db_to_shapefile(database_path)
-    with open(
-            os.path.join(RESULTS_DIR, 'ALL_DONE.txt'), 'w') as timestamp_file:
-        timestamp_file.write(
-            "Hi, I finished the NDR analysis at %s. Check out "
-            "results.shp\n" % datetime.datetime.now().strftime(
-                "%Y-%m-%d %H_%M_%S"))
 
 
 def merge_watershed_dems(

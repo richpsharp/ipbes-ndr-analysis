@@ -534,17 +534,6 @@ def main():
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()
 
-    # load biophysical table first, it's used a lot below
-    represenative_ndr_biophysical_table_path = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data', 'NDR_representative_table.csv')
-    biophysical_table = pandas.read_csv(
-        represenative_ndr_biophysical_table_path)
-    # clean up biophysical table
-    biophysical_table = biophysical_table.fillna(0)
-    biophysical_table.ix[biophysical_table['load_n'] == 'use raster', 'load_n'] = (
-        USE_AG_LOAD_ID)
-    biophysical_table['load_n'] = biophysical_table['load_n'].apply(
-        pandas.to_numeric)
     task_graph = taskgraph.TaskGraph(
         TASKGRAPH_DIR, N_CPUS, TASKGRAPH_REPORTING_FREQUENCY, DRY_RUN)
 
@@ -584,6 +573,16 @@ def main():
 
     task_graph.close()
     task_graph.join()
+
+    # load biophysical table first, it's used a lot below
+    biophysical_table = pandas.read_csv(biophysical_table_path)
+    # clean up biophysical table
+    biophysical_table = biophysical_table.fillna(0)
+    biophysical_table.ix[biophysical_table['load_n'] == 'use raster', 'load_n'] = (
+        USE_AG_LOAD_ID)
+    biophysical_table['load_n'] = biophysical_table['load_n'].apply(
+        pandas.to_numeric)
+
 
     database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
 

@@ -1,9 +1,8 @@
 """Script to manage NDR runs for IPBES project."""
+import sys
 import heapq
 import shutil
-import time
 import datetime
-import threading
 import logging
 import os
 import glob
@@ -38,20 +37,15 @@ FLOW_THRESHOLD = 33
 RET_LEN = 150.0
 K_VAL = 1.0
 SCENARIO_LIST = ['cur', 'ssp1', 'ssp3', 'ssp5']
+
 logging.basicConfig(
     format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
     level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
+LOGGER = logging.getLogger(__name__)
 
-hdlr = logging.FileHandler('log.txt')
-formatter = logging.Formatter(
-    '%(asctime)s %(name)-10s %(levelname)-8s %(message)s')
-hdlr.setFormatter(formatter)
-LOGGER = logging.getLogger('ipbes_ndr_analysis')
-
-TARGET_WORKSPACE = 'ndr_workspace'
-TASKGRAPH_DIR = os.path.join(TARGET_WORKSPACE, 'taskgraph_cache')
+BUCKET_DOWNLOAD_DIR = 'bucket_sync'
 RTREE_PATH = 'dem_rtree'
-IAM_TOKEN_PATH ='ecoshard-202992-key.json'
+iam_token_path ='ecoshard-202992-key.json'
 
 
 def db_to_shapefile(database_path):
@@ -520,14 +514,13 @@ class DUpOp(taskgraph.EncapsulatedTaskOp):
             self.target_d_up_raster_path, gdal.GDT_Float32, NODATA)
 
 
-def main():
+def main(iam_token_path, workspace_dir):
     """Entry point."""
-    logging.basicConfig(
-        format='%(asctime)s %(name)-10s %(levelname)-8s %(message)s',
-        level=logging.WARN, datefmt='%m/%d/%Y %H:%M:%S ')
     task_priority = 0  # we'll use this to schedule deep rather than wide
+    downloads_dir = os.path.join(workspace_dir, BUCKET_DOWNLOAD_DIR)
+
     try:
-        os.makedirs(TARGET_WORKSPACE)
+        os.makedirs(workspace_dir)
     except OSError:
         pass
 
@@ -535,39 +528,40 @@ def main():
     database_lock = multiprocessing_manager.Lock()
 
     task_graph = taskgraph.TaskGraph(
-        TASKGRAPH_DIR, N_CPUS, TASKGRAPH_REPORTING_FREQUENCY, DRY_RUN)
+        os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
+        TASKGRAPH_REPORTING_FREQUENCY, N_CPUS > 0)
 
     watersheds_archive_path = os.path.join(
-        TARGET_WORKSPACE,
+        downloads_dir,
         'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4')
 
     task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'reproduce-test', 'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
-            IAM_TOKEN_PATH, watersheds_archive_path),
+            iam_token_path, watersheds_archive_path),
         target_path_list=[watersheds_archive_path],
         task_name='download watersheds')
 
     biophysical_table_path = os.path.join(
-        TARGET_WORKSPACE, 'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
+        downloads_dir, 'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
     task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'reproduce-test',
             'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv',
-            IAM_TOKEN_PATH, biophysical_table_path),
+            iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
         task_name='download biophysical table')
 
     global_dem_archive_path = os.path.join(
-        TARGET_WORKSPACE, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
+        downloads_dir, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
     task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'reproduce-test',
             'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip',
-            IAM_TOKEN_PATH, global_dem_archive_path),
+            iam_token_path, global_dem_archive_path),
         target_path_list=[global_dem_archive_path],
         task_name='download dem archive')
 
@@ -584,7 +578,7 @@ def main():
         pandas.to_numeric)
 
 
-    database_path = os.path.join(TARGET_WORKSPACE, 'ipbes_ndr_results.db')
+    database_path = os.path.join(workspace_dir, 'ipbes_ndr_results.db')
 
     sql_create_projects_table = (
         """ CREATE TABLE IF NOT EXISTS nutrient_export (
@@ -600,7 +594,7 @@ def main():
     cursor = conn.cursor()
     cursor.execute(sql_create_projects_table)
 
-    dem_rtree_path = os.path.join(TARGET_WORKSPACE, RTREE_PATH)
+    dem_rtree_path = os.path.join(workspace_dir, RTREE_PATH)
 
     dem_path_list = glob.glob(os.path.join(
         BASE_DROPBOX_DIR, 'dataplatform',
@@ -610,7 +604,7 @@ def main():
         dem_path_list[0])['pixel_size']
 
     dem_path_index_map_path = os.path.join(
-        TARGET_WORKSPACE, 'dem_path_index_map.dat')
+        workspace_dir, 'dem_path_index_map.dat')
     build_dem_rtree_task = task_graph.add_task(
         func=build_dem_rtree,
         args=(dem_path_list, dem_path_index_map_path, dem_rtree_path),
@@ -631,7 +625,7 @@ def main():
             os.path.basename(global_watershed_path))[0]
         watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
-        for watershed_id in xrange(watershed_layer.GetFeatureCount()):
+        for watershed_id in range(watershed_layer.GetFeatureCount()):
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
             watershed_feature = watershed_layer.GetFeature(watershed_id)
             feature_geom = watershed_feature.GetGeometryRef()
@@ -665,7 +659,7 @@ def main():
         # make a few subdirectories so we don't explode on directories
         last_digits = '%.4d' % watershed_id
         ws_working_dir = os.path.join(
-            TARGET_WORKSPACE, last_digits[-1], last_digits[-2],
+            workspace_dir, last_digits[-1], last_digits[-2],
             last_digits[-3], last_digits[-4],
             "%s_working_dir" % ws_prefix)
         watershed_dem_path = os.path.join(
@@ -1227,7 +1221,7 @@ def reproject_vector_feature(
     original_field_count = layer_dfn.GetFieldCount()
 
     # For every field, create a duplicate field in the new layer
-    for fld_index in xrange(original_field_count):
+    for fld_index in range(original_field_count):
         original_field = layer_dfn.GetFieldDefn(fld_index)
         target_field = ogr.FieldDefn(
             original_field.GetName(), original_field.GetType())
@@ -1264,7 +1258,7 @@ def reproject_vector_feature(
 
     # For all the fields in the feature set the field values from the
     # source field
-    for fld_index in xrange(target_feature.GetFieldCount()):
+    for fld_index in range(target_feature.GetFieldCount()):
         target_feature.SetField(
             fld_index, base_feature.GetField(fld_index))
 
@@ -1279,5 +1273,9 @@ def reproject_vector_feature(
     layer = None
     base_vector = None
 
+
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) != 3:
+        LOGGER.error(
+            "usage: python %s iam_token_path workspace_dir", sys.argv[0])
+    main(sys.argv[1], sys.argv[2])

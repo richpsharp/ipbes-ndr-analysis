@@ -1,4 +1,5 @@
 """Script to manage NDR runs for IPBES project."""
+import zipfile
 import sys
 import heapq
 import shutil
@@ -44,6 +45,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'
+CHURN_DIR = 'churn'
 RTREE_PATH = 'dem_rtree'
 
 
@@ -517,6 +519,7 @@ def main(iam_token_path, workspace_dir):
     """Entry point."""
     task_priority = 0  # we'll use this to schedule deep rather than wide
     downloads_dir = os.path.join(workspace_dir, BUCKET_DOWNLOAD_DIR)
+    churn_dir = os.path.join(workspace_dir, CHURN_DIR)
 
     try:
         os.makedirs(workspace_dir)
@@ -532,19 +535,27 @@ def main(iam_token_path, workspace_dir):
 
     watersheds_archive_path = os.path.join(
         downloads_dir,
-        'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4')
-
-    task_graph.add_task(
+        'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip')
+    fetch_watersheds_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'reproduce-test', 'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
             iam_token_path, watersheds_archive_path),
         target_path_list=[watersheds_archive_path],
         task_name='download watersheds')
+    watersheds_touch_file_path = watersheds_archive_path + '_unzipped'
+    unzip_watersheds_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            watersheds_archive_path, churn_dir,
+            watersheds_touch_file_path),
+        target_path_list=[watersheds_touch_file_path],
+        dependent_task_list=[fetch_watersheds_task],
+        task_name=f'unzip watersheds_globe_HydroSHEDS_15arcseconds')
 
     biophysical_table_path = os.path.join(
         downloads_dir, 'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
-    task_graph.add_task(
+    download_biophysical_table_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'reproduce-test',
@@ -552,10 +563,17 @@ def main(iam_token_path, workspace_dir):
             iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
         task_name='download biophysical table')
+    clean_biophysical_table_pickle_path = os.path.join(
+        churn_dir, 'biophysical.pickle')
+    clean_biophysical_task = task_graph.add_task(
+        func=clean_and_pickle_biophysical_table,
+        args=(biophysical_table_path, clean_biophysical_table_pickle_path),
+        target_path_list=[clean_biophysical_table_pickle_path],
+        dependent_task_list=[download_biophysical_table_task])
 
     global_dem_archive_path = os.path.join(
         downloads_dir, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
-    task_graph.add_task(
+    global_dem_download_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'reproduce-test',
@@ -563,55 +581,31 @@ def main(iam_token_path, workspace_dir):
             iam_token_path, global_dem_archive_path),
         target_path_list=[global_dem_archive_path],
         task_name='download dem archive')
+    dem_touch_file_path = global_dem_archive_path + '_unzipped'
+    unzip_dem_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            global_dem_archive_path, churn_dir,
+            dem_touch_file_path),
+        target_path_list=[dem_touch_file_path],
+        dependent_task_list=[global_dem_download_task],
+        task_name=f'unzip global_dem')
 
-    task_graph.close()
-    task_graph.join()
-
-    # load biophysical table first, it's used a lot below
-    biophysical_table = pandas.read_csv(biophysical_table_path)
-    # clean up biophysical table
-    biophysical_table = biophysical_table.fillna(0)
-    biophysical_table.ix[biophysical_table['load_n'] == 'use raster', 'load_n'] = (
-        USE_AG_LOAD_ID)
-    biophysical_table['load_n'] = biophysical_table['load_n'].apply(
-        pandas.to_numeric)
-
-    database_path = os.path.join(workspace_dir, 'ipbes_ndr_results.db')
-
-    sql_create_projects_table = (
-        """ CREATE TABLE IF NOT EXISTS nutrient_export (
-            ws_prefix_key TEXT NOT NULL,
-            scenario_key TEXT NOT NULL,
-            total_export REAL NOT NULL,
-            geometry_wkt TEXT NOT NULL,
-            PRIMARY KEY (ws_prefix_key, scenario_key)
-        ); """)
-
-    # create a database connection
-    conn = sqlite3.connect(database_path)
-    cursor = conn.cursor()
-    cursor.execute(sql_create_projects_table)
-
-    dem_rtree_path = os.path.join(workspace_dir, RTREE_PATH)
-
-    dem_path_list = glob.glob(os.path.join(
-        BASE_DROPBOX_DIR, 'dataplatform',
-        'dem_globe_CGIAR_STRMv41_3arcseconds', '*.tif'))
-
-    dem_pixel_size = pygeoprocessing.get_raster_info(
-        dem_path_list[0])['pixel_size']
-
+    dem_path_dir = os.path.join(churn_dir, 'global_dem_3s')
+    dem_rtree_path = os.path.join(churn_dir, RTREE_PATH)
     dem_path_index_map_path = os.path.join(
         workspace_dir, 'dem_path_index_map.dat')
     build_dem_rtree_task = task_graph.add_task(
-        func=build_dem_rtree,
-        args=(dem_path_list, dem_path_index_map_path, dem_rtree_path),
+        func=build_raster_rtree,
+        args=(dem_path_dir, dem_path_index_map_path, dem_rtree_path),
         target_path_list=[
             dem_rtree_path+'.dat',  # rtree adds a ".dat" file
             dem_path_index_map_path],
-        task_name='build_dem_rtree',
-        priority=task_priority)
-    task_priority -= 1
+        dependent_task_list=[unzip_dem_task],
+        task_name='build_raster_rtree')
+
+    task_graph.close()
+    task_graph.join()
 
     global_watershed_path_list = glob.glob(
         os.path.join(
@@ -1152,21 +1146,37 @@ def merge_watershed_dems(
             watershed_id)
 
 
-def build_dem_rtree(dem_path_list, dem_path_index_map_path, dem_rtree_path):
-    """Build RTree indexed by FID for points in `wwwiii_vector_path`."""
-    LOGGER.info('building rTree %s', dem_rtree_path+'.dat')
-    if os.path.exists(dem_rtree_path+'.dat'):
-        LOGGER.warn('%s exists so skipping creation.', dem_rtree_path)
+def build_raster_rtree(
+        raster_dir_path, raster_path_index_map_path, raster_rtree_path):
+    """Build RTree for list of rasters if RTree does not exist.
+
+    If the RTree already exists, this function logs a warning and returns.
+
+    Paramters:
+        raster_dir_path (str): path to a directory of GIS rasters.
+        raster_path_index_map_path (str): this is a path to a pickle file
+            generated by this function that will index RTree indexes to
+            the rasters on disk that will intersect the RTree.
+        raster_rtree_path (str): this is the target path to the saved rTree
+            generated by this call.
+
+    Returns:
+        None.
+    """
+    LOGGER.info('building rTree %s', raster_rtree_path+'.dat')
+    if os.path.exists(raster_rtree_path+'.dat'):
+        LOGGER.warn('%s exists so skipping rTree creation.', raster_rtree_path)
         return
-    dem_rtree = rtree.index.Index(dem_rtree_path)
-    dem_path_index_map = {}
-    for dem_id, dem_path in enumerate(dem_path_list):
-        raster_info = pygeoprocessing.get_raster_info(dem_path)
-        dem_path_index_map[dem_id] = dem_path
-        dem_rtree.insert(dem_id, raster_info['bounding_box'])
-    dem_rtree.close()
-    with open(dem_path_index_map_path, 'wb') as f:
-        dill.dump(dem_path_index_map, f)
+    raster_rtree = rtree.index.Index(raster_rtree_path)
+    raster_path_index_map = {}
+    raster_path_list = glob.glob(os.path.join(raster_dir_path, '*.tif'))
+    for raster_id, raster_path in enumerate(raster_path_list):
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+        raster_path_index_map[raster_id] = raster_path
+        raster_rtree.insert(raster_id, raster_info['bounding_box'])
+    raster_rtree.close()
+    with open(raster_path_index_map_path, 'wb') as f:
+        dill.dump(raster_path_index_map, f)
 
 
 def reproject_vector_feature(
@@ -1270,6 +1280,43 @@ def reproject_vector_feature(
             layer.GetFeatureCount(), target_path)
     layer = None
     base_vector = None
+
+
+def unzip_file(zipfile_path, target_dir, touchfile_path):
+    """Unzip contents of `zipfile_path`.
+
+    Parameters:
+        zipfile_path (string): path to a zipped file.
+        target_dir (string): path to extract zip file to.
+        touchfile_path (string): path to a file to create if unzipping is
+            successful.
+
+    Returns:
+        None.
+
+    """
+    with zipfile.ZipFile(zipfile_path, 'r') as zip_ref:
+        zip_ref.extractall(target_dir)
+
+    with open(touchfile_path, 'w') as touchfile:
+        touchfile.write(f'unzipped {zipfile_path}')
+
+
+def clean_and_pickle_biophysical_table(
+        biophysical_table_path, clean_biophysical_table_pickle_path):
+    """Clean out nans and set replacement lucodde and pickle table."""
+
+    biophysical_table = pandas.read_csv(biophysical_table_path)
+    # clean up biophysical table
+    biophysical_table = biophysical_table.fillna(0)
+    biophysical_table.ix[
+        biophysical_table['load_n'] == 'use raster', 'load_n'] = (
+            USE_AG_LOAD_ID)
+    biophysical_table['load_n'] = biophysical_table['load_n'].apply(
+        pandas.to_numeric)
+
+    with open(clean_biophysical_table_pickle_path, 'wb') as clean_bpt_file:
+        dill.dump(biophysical_table, clean_bpt_file)
 
 
 if __name__ == '__main__':

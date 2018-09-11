@@ -45,7 +45,6 @@ LOGGER = logging.getLogger(__name__)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'
 RTREE_PATH = 'dem_rtree'
-iam_token_path ='ecoshard-202992-key.json'
 
 
 def db_to_shapefile(database_path):
@@ -576,7 +575,6 @@ def main(iam_token_path, workspace_dir):
         USE_AG_LOAD_ID)
     biophysical_table['load_n'] = biophysical_table['load_n'].apply(
         pandas.to_numeric)
-
 
     database_path = os.path.join(workspace_dir, 'ipbes_ndr_results.db')
 

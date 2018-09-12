@@ -1,7 +1,6 @@
 """Script to manage NDR runs for IPBES project."""
 import zipfile
 import sys
-import heapq
 import shutil
 import datetime
 import logging
@@ -9,7 +8,6 @@ import os
 import glob
 import math
 import sqlite3
-import multiprocessing
 
 import reproduce.utils
 import taskgraph
@@ -30,6 +28,7 @@ import ipbes_ndr_analysis_cython
 
 N_CPUS = 4
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
+TASKGRAPH_DELAYED_START = False
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -39,7 +38,7 @@ K_VAL = 1.0
 sqlCENARIO_LIST = ['cur', 'ssp1', 'ssp3', 'ssp5']
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(pathname)s.%(funcName)s:%(lineno)d] %(message)s'),
@@ -49,6 +48,7 @@ LOGGER = logging.getLogger(__name__)
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'
 CHURN_DIR = 'churn'
 RTREE_PATH = 'dem_rtree'
+WATERSHED_PROCESSING_DIR = 'watershed_processing'
 
 
 def db_to_shapefile(database_path):
@@ -521,6 +521,8 @@ def main(iam_token_path, workspace_dir):
     """Entry point."""
     downloads_dir = os.path.join(workspace_dir, BUCKET_DOWNLOAD_DIR)
     churn_dir = os.path.join(workspace_dir, CHURN_DIR)
+    watershed_processing_dir = os.path.join(
+        workspace_dir, WATERSHED_PROCESSING_DIR)
 
     try:
         os.makedirs(workspace_dir)
@@ -529,7 +531,7 @@ def main(iam_token_path, workspace_dir):
 
     task_graph = taskgraph.TaskGraph(
         os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
-        TASKGRAPH_REPORTING_FREQUENCY, N_CPUS > 0)
+        TASKGRAPH_REPORTING_FREQUENCY, TASKGRAPH_DELAYED_START)
 
     watersheds_archive_path = os.path.join(
         downloads_dir,
@@ -639,27 +641,30 @@ def main(iam_token_path, workspace_dir):
     LOGGER.info("scheduling watershed processing")
     global_watershed_path_list = glob.glob(
         os.path.join(watersheds_dir_path, '*.shp'))
+    task_id = 0
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
         watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         for watershed_feature in watershed_layer:
-            watershed_id = watershed_feature.GetFID()
-            ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_id)
+            watershed_fid = watershed_feature.GetFID()
+            ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
             watershed_geom = watershed_feature.GetGeometryRef()
             watershed_area = watershed_geom.GetArea()
             watershed_geom = None
-            watershed_feature = None
             if watershed_area < 0.03:
                 #  0.03 square degrees is a healthy underapproximation of
                 # 100 sq km which is about the minimum watershed size we'd
                 # want.
                 continue
             schedule_watershed_processing(
-                task_graph, watershed_id, ws_prefix, global_watershed_path,
-                dem_rtree_path, dem_path_index_map_path, database_path,
-                workspace_dir)
+                task_graph, task_id, ws_prefix, watershed_fid,
+                watershed_feature, dem_rtree_path,
+                dem_path_index_map_path, database_path,
+                watershed_processing_dir)
+            watershed_feature = None
+            task_id -= 1
         watershed_layer = None
         watershed_vector = None
 
@@ -669,8 +674,8 @@ def main(iam_token_path, workspace_dir):
 
 
 def schedule_watershed_processing(
-        task_graph, watershed_fid, ws_prefix,
-        global_watershed_path, dem_rtree_path, dem_path_index_map_path,
+        task_graph, task_id, ws_prefix, watershed_fid,
+        base_watershed_feature, dem_rtree_path, dem_path_index_map_path,
         target_result_database_path, workspace_dir):
     """Process a watershed for NDR analysis.
 
@@ -680,8 +685,9 @@ def schedule_watershed_processing(
 
     Parameters:
         task_graph (TaskGraph): taskgraph scheduler to schedule against.
+        task_id (int): priority to set taskgrpah at.
         watershed_fid (integer): FID of the watershed to schedule.
-        global_watershed_path (str): path to watershed vector file.
+        base_watershed_layer (ogr.Layer): base watershed layer.
         dem_rtree_pat` (str): path to RTree that can be used to determine
             which DEM tiles intersect a bounding box.
         dem_path_index_map_path (str): path to pickled dictionary that maps
@@ -702,40 +708,43 @@ def schedule_watershed_processing(
         workspace_dir, last_digits[-1], last_digits[-2],
         last_digits[-3], last_digits[-4],
         "%s_working_dir" % ws_prefix)
+
     watershed_dem_path = os.path.join(
         ws_working_dir, 'ws_%s_dem.tif' % ws_prefix)
+
+    watershed_geometry = base_watershed_feature.GetGeometryRef()
+    watershed_bb = [
+        watershed_geometry.GetEnvelope()[i] for i in [0, 2, 1, 3]]
+
     merge_watershed_dems_task = task_graph.add_task(
         func=merge_watershed_dems,
         args=(
-            global_watershed_path, watershed_fid, dem_rtree_path,
+            watershed_bb, watershed_fid, dem_rtree_path,
             dem_path_index_map_path, watershed_dem_path),
         target_path_list=[watershed_dem_path],
         task_name='merge_watershed_dems_%s' % ws_prefix)
 
-    watershed_vector = gdal.OpenEx(global_watershed_path)
-    watershed_layer = watershed_vector.GetLayer()
-    watershed_feature = watershed_layer.GetFeature(watershed_fid)
-    watershed_geom = watershed_feature.GetGeometryRef()
-
-    utm_code = (math.floor((watershed_geom.GetX() + 180)/6) % 60) + 1
-    lat_code = 6 if watershed_geom.GetY() > 0 else 7
+    centroid_geom = watershed_geometry.Centroid()
+    utm_code = (math.floor((centroid_geom.GetX() + 180)/6) % 60) + 1
+    lat_code = 6 if centroid_geom.GetY() > 0 else 7
     epsg_code = int('32%d%02d' % (lat_code, utm_code))
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
     utm_pixel_size = 500.0
     degree_pixel_size = (
-        utm_pixel_size / length_of_degree(watershed_geom.GetY()))
+        utm_pixel_size / length_of_degree(centroid_geom.GetY()))
 
     local_watershed_path = os.path.join(ws_working_dir, '%s.gpkg' % ws_prefix)
-    if os.path.exists(local_watershed_path):
-        os.remove(local_watershed_path)
+    watershed_geom_wkb = watershed_geometry.ExportToWkb()
+
     reproject_watershed_task = task_graph.add_task(
-        func=reproject_vector_feature,
+        func=reproject_geometry_to_target,
         args=(
-            global_watershed_path, epsg_srs.ExportToWkt(), watershed_fid,
+            watershed_geom_wkb, epsg_srs.ExportToWkt(),
             local_watershed_path),
         target_path_list=[local_watershed_path],
-        task_name='project_watershed_%s' % ws_prefix)
+        task_name='project_watershed_%s' % ws_prefix,
+        priority=task_id)
 
     LOGGER.warn('we need to do all this too')
     return
@@ -1133,12 +1142,12 @@ def schedule_watershed_processing(
 
 
 def merge_watershed_dems(
-        watershed_path, watershed_id, dem_rtree_path, dem_path_index_map_path,
+        watershed_bb, watershed_id, dem_rtree_path, dem_path_index_map_path,
         target_dem_path):
     """Find DEMs that overlap the given watershed polyon by id.
 
     Parameters:
-        watershed_path (string):
+        watershed_bb (string): watershed bounding box
         watershed_id (int): feature number to index and overlap.
         dem_rtree_path (string): path to a pickled rtree that maps
             bounding boxes to dem ids.
@@ -1151,16 +1160,7 @@ def merge_watershed_dems(
     Returns:
         None.
     """
-    watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
-    watershed_layer = watershed_vector.GetLayer()
-    watershed_feature = watershed_layer.GetFeature(watershed_id)
-    watershed_geometry = watershed_feature.GetGeometryRef()
-    watershed_bb = [
-        watershed_geometry.GetEnvelope()[i] for i in [0, 2, 1, 3]]
-    watershed_geometry = None
-    watershed_feature = None
-    watershed_vector = None
-
+    os.makedirs(os.path.dirname(target_dem_path), exist_ok=True)
     LOGGER.debug(watershed_bb)
     dem_rtree = rtree.index.Index(dem_rtree_path)
     LOGGER.debug(dem_rtree.bounds)
@@ -1221,15 +1221,15 @@ def build_raster_rtree(
         dill.dump(raster_path_index_map, f)
 
 
-def reproject_vector_feature(
-        base_vector_path, target_wkt, feature_id, target_path):
+def reproject_geometry_to_target(
+        geom_wkb, target_wkt, target_path):
     """Reproject a single OGR DataSource feature.
 
     Transforms the features of the base vector to the desired output
     projection in a new ESRI Shapefile.
 
     Parameters:
-        base_vector_path (string): Path to the base shapefile to transform.
+        geom_wkt (string): base geometry in wkb.
         target_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         feature_id (int): the feature to reproject and copy.
@@ -1238,8 +1238,7 @@ def reproject_vector_feature(
     Returns:
         None
     """
-    base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
-
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
         LOGGER.warn(
@@ -1247,81 +1246,38 @@ def reproject_vector_feature(
             target_path)
         os.remove(target_path)
 
-    try:
-        os.makedirs(os.path.dirname(target_path))
-    except OSError:
-        pass
-
     target_sr = osr.SpatialReference(target_wkt)
 
     # create a new shapefile from the orginal_datasource
     target_driver = gdal.GetDriverByName('GPKG')
     target_vector = target_driver.Create(
         target_path, 0, 0, 0, gdal.GDT_Unknown)
-
-    layer = base_vector.GetLayer()
-    layer_dfn = layer.GetLayerDefn()
-
-    # Create new layer for target_vector using same name and
-    # geometry type from base vector but new projection
+    layer_name = os.path.splitext(os.path.basename(target_path))[0]
+    base_geom = ogr.CreateGeometryFromWkb(geom_wkb)
     target_layer = target_vector.CreateLayer(
-        layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
-
-    # Get the number of fields in original_layer
-    original_field_count = layer_dfn.GetFieldCount()
-
-    # For every field, create a duplicate field in the new layer
-    for fld_index in range(original_field_count):
-        original_field = layer_dfn.GetFieldDefn(fld_index)
-        target_field = ogr.FieldDefn(
-            original_field.GetName(), original_field.GetType())
-        target_layer.CreateField(target_field)
+        layer_name, target_sr, base_geom.GetGeometryType())
 
     # Get the SR of the original_layer to use in transforming
-    base_sr = layer.GetSpatialRef()
+    wgs84_sr = osr.SpatialReference()
+    wgs84_sr.ImportFromEPSG(4326)
 
     # Create a coordinate transformation
-    coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
-
-    # Copy all of the features in layer to the new shapefile
-    error_count = 0
-    base_feature = layer.GetFeature(feature_id)
-    geom = base_feature.GetGeometryRef()
-    if geom is None:
-        # we encountered this error occasionally when transforming clipped
-        # global polygons.  Not clear what is happening but perhaps a
-        # feature was retained that otherwise wouldn't have been included
-        # in the clip
-        raise ValueError("Geometry is None.")
+    coord_trans = osr.CoordinateTransformation(wgs84_sr, target_sr)
 
     # Transform geometry into format desired for the new projection
-    error_code = geom.Transform(coord_trans)
+    error_code = base_geom.Transform(coord_trans)
     if error_code != 0:  # error
         # this could be caused by an out of range transformation
         # whatever the case, don't put the transformed poly into the
         # output set
-        raise ValueError("Unable to reproject geometry.")
+        raise ValueError(
+            "Unable to reproject geometry on %s." % target_path)
 
     # Copy original_datasource's feature and set as new shapes feature
     target_feature = ogr.Feature(target_layer.GetLayerDefn())
-    target_feature.SetGeometry(geom)
-
-    # For all the fields in the feature set the field values from the
-    # source field
-    for fld_index in range(target_feature.GetFieldCount()):
-        target_feature.SetField(
-            fld_index, base_feature.GetField(fld_index))
-
+    target_feature.SetGeometry(base_geom)
     target_layer.CreateFeature(target_feature)
     target_feature = None
-    base_feature = None
-    if error_count > 0:
-        LOGGER.warn(
-            '%d features out of %d were unable to be transformed and are'
-            ' not in the output vector at %s', error_count,
-            layer.GetFeatureCount(), target_path)
-    layer = None
-    base_vector = None
 
 
 def unzip_file(zipfile_path, target_dir, touchfile_path):

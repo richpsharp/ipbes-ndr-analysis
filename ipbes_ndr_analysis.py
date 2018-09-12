@@ -724,6 +724,9 @@ def schedule_watershed_processing(
         target_path_list=[watershed_dem_path],
         task_name='merge_watershed_dems_%s' % ws_prefix)
 
+    masked_watershed_dem_path = watershed_dem_path.replace(
+        '.tif', '_masked.tif')
+
     centroid_geom = watershed_geometry.Centroid()
     utm_code = (math.floor((centroid_geom.GetX() + 180)/6) % 60) + 1
     lat_code = 6 if centroid_geom.GetY() > 0 else 7
@@ -745,6 +748,16 @@ def schedule_watershed_processing(
         target_path_list=[local_watershed_path],
         task_name='project_watershed_%s' % ws_prefix,
         priority=task_id)
+
+    mask_watershed_dem_task = task_graph.add_task(
+        func=mask_raster_by_vector,
+        args=(
+            watershed_dem_path, local_watershed_path,
+            masked_watershed_dem_path),
+        target_path_list=[masked_watershed_dem_path],
+        dependent_task_list=[
+            reproject_watershed_task, merge_watershed_dems_task],
+        task_name='mask dem %s' % ws_prefix)
 
     LOGGER.warn('we need to do all this too')
     return
@@ -1315,6 +1328,35 @@ def clean_and_pickle_biophysical_table(
 
     with open(clean_biophysical_table_pickle_path, 'wb') as clean_bpt_file:
         dill.dump(biophysical_table, clean_bpt_file)
+
+
+def mask_raster_by_vector(
+        base_raster_path, vector_path, target_masked_raster_path):
+    """Mask out values in base raster that don't overlap with vector_path."""
+    base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+    pygeoprocessing.new_raster_from_base(
+        base_raster_path, target_masked_raster_path,
+        base_raster_info['datatype'], base_raster_info['nodata'])
+
+    pygeoprocessing.rasterize(
+        vector_path, target_masked_raster_path, [1], None)
+
+    target_raster = gdal.OpenEx(
+        target_masked_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+    target_band = target_raster.GetRasterBand(1)
+    base_raster = gdal.OpenEx(
+        base_raster_path, gdal.OF_RASTER)
+    base_band = base_raster.GetRasterBand(1)
+
+    for offset_dict in pygeoprocessing.iterblocks(
+            base_raster_path, offset_only=True):
+        target_array = target_band.ReadAsArray(**offset_dict)
+        mask_array = numpy.isclose(target_array , 1)
+        base_array = base_band.ReadAsArray(**offset_dict)
+        target_array[mask_array] = base_array[mask_array]
+        target_band.WriteArray(
+            target_array, xoff=offset_dict['xoff'],
+            yoff=offset_dict['yoff'])
 
 
 if __name__ == '__main__':

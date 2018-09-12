@@ -722,7 +722,8 @@ def schedule_watershed_processing(
             watershed_bb, watershed_fid, dem_rtree_path,
             dem_path_index_map_path, watershed_dem_path),
         target_path_list=[watershed_dem_path],
-        task_name='merge_watershed_dems_%s' % ws_prefix)
+        task_name='merge_watershed_dems_%s' % ws_prefix,
+        priority=task_id)
 
     masked_watershed_dem_path = watershed_dem_path.replace(
         '.tif', '_masked.tif')
@@ -743,8 +744,9 @@ def schedule_watershed_processing(
     reproject_watershed_task = task_graph.add_task(
         func=reproject_geometry_to_target,
         args=(
-            watershed_geom_wkb, epsg_srs.ExportToWkt(),
-            local_watershed_path),
+            watershed_geom_wkb,
+            watershed_geometry.GetSpatialReference().ExportToWkt(),
+            epsg_srs.ExportToWkt(), local_watershed_path),
         target_path_list=[local_watershed_path],
         task_name='project_watershed_%s' % ws_prefix,
         priority=task_id)
@@ -1235,18 +1237,19 @@ def build_raster_rtree(
 
 
 def reproject_geometry_to_target(
-        geom_wkb, target_wkt, target_path):
+        geom_wkb, base_sr_wkt, target_sr_wkt, target_path):
     """Reproject a single OGR DataSource feature.
 
     Transforms the features of the base vector to the desired output
     projection in a new ESRI Shapefile.
 
     Parameters:
-        geom_wkt (string): base geometry in wkb.
-        target_wkt (string): the desired output projection in Well Known Text
+        geom_wkt (str): base geometry in wkb.
+        base_sr_wkt (str): the spatial reference in wkt for `geom_wkb`.
+        target_sr_wkt (str): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         feature_id (int): the feature to reproject and copy.
-        target_path (string): the filepath to the transformed shapefile
+        target_path (str): the filepath to the transformed shapefile
 
     Returns:
         None
@@ -1259,7 +1262,7 @@ def reproject_geometry_to_target(
             target_path)
         os.remove(target_path)
 
-    target_sr = osr.SpatialReference(target_wkt)
+    target_sr = osr.SpatialReference(target_sr_wkt)
 
     # create a new shapefile from the orginal_datasource
     target_driver = gdal.GetDriverByName('GPKG')
@@ -1270,12 +1273,9 @@ def reproject_geometry_to_target(
     target_layer = target_vector.CreateLayer(
         layer_name, target_sr, base_geom.GetGeometryType())
 
-    # Get the SR of the original_layer to use in transforming
-    wgs84_sr = osr.SpatialReference()
-    wgs84_sr.ImportFromEPSG(4326)
-
     # Create a coordinate transformation
-    coord_trans = osr.CoordinateTransformation(wgs84_sr, target_sr)
+    base_sr = osr.SpatialReference(base_sr_wkt)
+    coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
     # Transform geometry into format desired for the new projection
     error_code = base_geom.Transform(coord_trans)

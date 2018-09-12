@@ -26,7 +26,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = -1
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1
@@ -533,17 +533,93 @@ def main(iam_token_path, workspace_dir):
         os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
         TASKGRAPH_REPORTING_FREQUENCY, TASKGRAPH_DELAYED_START)
 
+    ag_load_scenarios_archive_path = os.path.join(
+        downloads_dir, 'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip')
+    fetch_ag_load_scenarios_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ipbes-ndr-ecoshard-data',
+            'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip',
+            iam_token_path,
+            ag_load_scenarios_archive_path),
+        target_path_list=[ag_load_scenarios_archive_path],
+        task_name='fetch ag load scenarios')
+    ag_load_scenarios_touch_file_path = (
+        os.path.join(
+            churn_dir, os.path.basename(ag_load_scenarios_archive_path) + '_unzipped'))
+    unzip_ag_load_scenarios_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            ag_load_scenarios_archive_path, churn_dir,
+            ag_load_scenarios_touch_file_path),
+        target_path_list=[ag_load_scenarios_touch_file_path],
+        dependent_task_list=[fetch_ag_load_scenarios_task],
+        task_name=f'unzip ag_load_scenarios')
+    ag_load_scenarios_dir_path = os.path.join(
+        churn_dir, 'ag_load_scenarios')
+
+    precip_scenarios_archive_path = os.path.join(
+        downloads_dir, 'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip')
+    fetch_precip_scenarios_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ipbes-ndr-ecoshard-data',
+            'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip',
+            iam_token_path,
+            precip_scenarios_archive_path),
+        target_path_list=[precip_scenarios_archive_path],
+        task_name='fetch precip scenarios')
+    precip_scenarios_touch_file_path = (
+        os.path.join(
+            churn_dir, os.path.basename(precip_scenarios_archive_path) + '_unzipped'))
+    precip_scenarios_dir_path = os.path.join(
+        churn_dir, 'precip_scenarios')
+    unzip_precip_scenarios_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            precip_scenarios_archive_path, precip_scenarios_dir_path,
+            precip_scenarios_touch_file_path),
+        target_path_list=[precip_scenarios_touch_file_path],
+        dependent_task_list=[fetch_precip_scenarios_task],
+        task_name=f'unzip precip_scenarios')
+
+    globio_landuse_archive_path = os.path.join(
+        downloads_dir,
+        'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip')
+    fetch_globio_landuse_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ipbes-ndr-ecoshard-data',
+            'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip',
+            iam_token_path, globio_landuse_archive_path),
+        target_path_list=[globio_landuse_archive_path],
+        task_name='fetch globio landuse')
+    globio_landuse_touch_file_path = (
+        os.path.join(
+            churn_dir, os.path.basename(globio_landuse_archive_path) + '_unzipped'))
+    globio_landuse_dir_path = os.path.join(
+        churn_dir, 'globio_landuse_scenarios')
+    unzip_globio_landuse_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            globio_landuse_archive_path, globio_landuse_dir_path,
+            globio_landuse_touch_file_path),
+        target_path_list=[globio_landuse_touch_file_path],
+        dependent_task_list=[fetch_globio_landuse_task],
+        task_name=f'unzip globio landuse scenarios')
+
     watersheds_archive_path = os.path.join(
         downloads_dir,
         'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip')
     fetch_watersheds_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
-            'reproduce-test', 'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
+            'ipbes-ndr-ecoshard-data', 'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
             iam_token_path, watersheds_archive_path),
         target_path_list=[watersheds_archive_path],
         task_name='download watersheds')
-    watersheds_touch_file_path = watersheds_archive_path + '_unzipped'
+    watersheds_touch_file_path = os.path.join(
+        churn_dir, os.path.basename(watersheds_archive_path) + '_unzipped')
     unzip_watersheds_task = task_graph.add_task(
         func=unzip_file,
         args=(
@@ -561,7 +637,7 @@ def main(iam_token_path, workspace_dir):
     download_biophysical_table_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
-            'reproduce-test',
+            'ipbes-ndr-ecoshard-data',
             'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv',
             iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
@@ -579,12 +655,13 @@ def main(iam_token_path, workspace_dir):
     global_dem_download_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
-            'reproduce-test',
+            'ipbes-ndr-ecoshard-data',
             'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip',
             iam_token_path, global_dem_archive_path),
         target_path_list=[global_dem_archive_path],
         task_name='download dem archive')
-    dem_touch_file_path = global_dem_archive_path + '_unzipped'
+    dem_touch_file_path = os.path.join(
+        churn_dir, os.path.basename(global_dem_archive_path) + '_unzipped')
     unzip_dem_task = task_graph.add_task(
         func=unzip_file,
         args=(
@@ -593,8 +670,8 @@ def main(iam_token_path, workspace_dir):
         target_path_list=[dem_touch_file_path],
         dependent_task_list=[global_dem_download_task],
         task_name=f'unzip global_dem')
-
     dem_path_dir = os.path.join(churn_dir, 'global_dem_3s')
+
     dem_rtree_path = os.path.join(churn_dir, RTREE_PATH)
     dem_path_index_map_path = os.path.join(
         churn_dir, 'dem_rtree_path_index_map.dat')
@@ -635,8 +712,8 @@ def main(iam_token_path, workspace_dir):
     cursor = conn.cursor()
     cursor.executescript(sql_create_projects_table)
 
-    LOGGER.info("waiting for all the data processing to finish.")
-    task_graph.join()
+    unzip_watersheds_task.join()
+    build_dem_rtree_task.join()
 
     LOGGER.info("scheduling watershed processing")
     global_watershed_path_list = glob.glob(

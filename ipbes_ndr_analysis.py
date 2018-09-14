@@ -26,7 +26,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 4
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1
@@ -557,8 +557,10 @@ class DUpOp(taskgraph.EncapsulatedTaskOp):
             self.target_d_up_raster_path, gdal.GDT_Float32, NODATA)
 
 
-def main(iam_token_path, workspace_dir):
+def main(raw_iam_token_path, raw_workspace_dir):
     """Entry point."""
+    iam_token_path = os.path.normpath(raw_iam_token_path)
+    workspace_dir = os.path.normpath(raw_workspace_dir)
     downloads_dir = os.path.join(workspace_dir, BUCKET_DOWNLOAD_DIR)
     churn_dir = os.path.join(workspace_dir, CHURN_DIR)
     watershed_processing_dir = os.path.join(
@@ -895,10 +897,8 @@ def schedule_watershed_processing(
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
-    local_bounding_box_wgs84 = pygeoprocessing.get_raster_info(
-        masked_watershed_dem_path)['bounding_box']
     target_bounding_box = pygeoprocessing.transform_bounding_box(
-        local_bounding_box_wgs84, wgs84_sr.ExportToWkt(),
+        watershed_bb, wgs84_sr.ExportToWkt(),
         epsg_srs.ExportToWkt())
 
     # clip dem, precip, & landcover to size of DEM? use 'mode'
@@ -1261,7 +1261,7 @@ def merge_watershed_dems(
             expected_nodata=-32768.0, bounding_box=watershed_bb)
     else:
         LOGGER.debug(
-            "no overlapping dems found for %s wsid %d", watershed_path,
+            "no overlapping dems found for %s wsid %d", target_dem_path,
             watershed_id)
 
 

@@ -35,7 +35,6 @@ USE_AG_LOAD_ID = 999
 FLOW_THRESHOLD = 33
 RET_LEN = 150.0
 K_VAL = 1.0
-sqlCENARIO_LIST = ['cur', 'ssp1', 'ssp3', 'ssp5']
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +49,47 @@ CHURN_DIR = 'churn'
 RTREE_PATH = 'dem_rtree'
 WATERSHED_PROCESSING_DIR = 'watershed_processing'
 
+# The following paths will be relative to the workspace directory
+LANDUSE_DIR = 'globio_landuse_scenarios'
+LANDCOVER_RASTER_PATHS = {
+    '1850': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif",
+    '1900': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif",
+    '1910': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif",
+    '1945': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif",
+    '1980': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif",
+    '2015': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif",
+    'ssp1': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif",
+    'ssp3': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif",
+    'ssp5': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif",
+}
+
+PRECIP_DIR = 'precip_scenarios'
+PRECIP_RASTER_PATHS = {
+    '1900': f'{PRECIP_DIR}/precip_1900.tif',
+    '1910': f'{PRECIP_DIR}/precip_1910.tif',
+    '1945': f'{PRECIP_DIR}/precip_1945.tif',
+    '1980': f'{PRECIP_DIR}/precip_1980.tif',
+    '2015': f'{PRECIP_DIR}/precip_2015.tif',
+    'ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
+    'ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
+    'ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
+    'he26pr50': f'{PRECIP_DIR}/he26pr50.tif',
+    'he60pr50': f'{PRECIP_DIR}/he60pr50.tif',
+    'he85pr50': f'{PRECIP_DIR}/he85pr50.tif',
+}
+
+AG_LOAD_DIR = 'ag_load_scenarios'
+AG_RASTER_PATHS = {
+    '1850': f'{AG_LOAD_DIR}/1850_ag_load.tif',
+    '1900': f'{AG_LOAD_DIR}/1900_ag_load.tif',
+    '1920': f'{AG_LOAD_DIR}/1920_ag_load.tif',
+    '1945': f'{AG_LOAD_DIR}/1945_ag_load.tif',
+    '1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
+    '2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
+    'ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
+    'ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
+}
 
 def db_to_shapefile(database_path):
     """Converts db to shapefile every `sleep_time` seconds."""
@@ -556,7 +596,7 @@ def main(iam_token_path, workspace_dir):
         dependent_task_list=[fetch_ag_load_scenarios_task],
         task_name=f'unzip ag_load_scenarios')
     ag_load_scenarios_dir_path = os.path.join(
-        churn_dir, 'ag_load_scenarios')
+        churn_dir, AG_LOAD_DIR)
 
     precip_scenarios_archive_path = os.path.join(
         downloads_dir, 'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip')
@@ -573,7 +613,7 @@ def main(iam_token_path, workspace_dir):
         os.path.join(
             churn_dir, os.path.basename(precip_scenarios_archive_path) + '_unzipped'))
     precip_scenarios_dir_path = os.path.join(
-        churn_dir, 'precip_scenarios')
+        churn_dir, PRECIP_DIR)
     unzip_precip_scenarios_task = task_graph.add_task(
         func=unzip_file,
         args=(
@@ -597,8 +637,9 @@ def main(iam_token_path, workspace_dir):
     globio_landuse_touch_file_path = (
         os.path.join(
             churn_dir, os.path.basename(globio_landuse_archive_path) + '_unzipped'))
+
     globio_landuse_dir_path = os.path.join(
-        churn_dir, 'globio_landuse_scenarios')
+        churn_dir, LANDUSE_DIR)
     unzip_globio_landuse_task = task_graph.add_task(
         func=unzip_file,
         args=(
@@ -738,7 +779,7 @@ def main(iam_token_path, workspace_dir):
             schedule_watershed_processing(
                 task_graph, task_id, ws_prefix, watershed_fid,
                 watershed_feature, dem_rtree_path,
-                dem_path_index_map_path, database_path,
+                dem_path_index_map_path, churn_dir, database_path,
                 watershed_processing_dir)
             watershed_feature = None
             task_id -= 1
@@ -753,7 +794,7 @@ def main(iam_token_path, workspace_dir):
 def schedule_watershed_processing(
         task_graph, task_id, ws_prefix, watershed_fid,
         base_watershed_feature, dem_rtree_path, dem_path_index_map_path,
-        target_result_database_path, workspace_dir):
+        root_data_dir, target_result_database_path, workspace_dir):
     """Process a watershed for NDR analysis.
 
     A successful call to this function will insert any new geometry
@@ -765,11 +806,13 @@ def schedule_watershed_processing(
         task_id (int): priority to set taskgrpah at.
         watershed_fid (integer): FID of the watershed to schedule.
         base_watershed_layer (ogr.Layer): base watershed layer.
-        dem_rtree_pat` (str): path to RTree that can be used to determine
+        dem_rtree_path (str): path to RTree that can be used to determine
             which DEM tiles intersect a bounding box.
         dem_path_index_map_path (str): path to pickled dictionary that maps
             `dem_rtree_path` IDs to file paths of the DEM tile that matches
             that id.
+        root_data_dir (str): path to directory where all landcover, precip,
+            and load rasters can be found.
         target_result_database_path (str): A database that has two tables
             'nutrient_export (ws_prefix_key, scenario_key, total_export)'
             'geometry_table (ws_prefix_key, geometry_wkb)'
@@ -811,7 +854,7 @@ def schedule_watershed_processing(
     epsg_code = int('32%d%02d' % (lat_code, utm_code))
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
-    utm_pixel_size = 500.0
+    utm_pixel_size = float(90.0)
     degree_pixel_size = (
         utm_pixel_size / length_of_degree(centroid_geom.GetY()))
 
@@ -838,54 +881,11 @@ def schedule_watershed_processing(
             reproject_watershed_task, merge_watershed_dems_task],
         task_name='mask dem %s' % ws_prefix)
 
-    LOGGER.warn('we need to do all this too')
-    return
-
-    landcover_raster_path = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'GLOBIO4_landuse_10sec_tifs_20171207_Idiv', 'Current2015',
-        'Globio4_landuse_10sec_2015_cropint.tif')
-
-    precip_raster_path_cur = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'precip_globe_WorldClim_30arcseconds.tif')
-
-    precip_raster_path_ssp1 = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ssp1_3_5_annual_precip_scenarios_for_ndr', 'he26pr50.tif')
-
-    precip_raster_path_ssp3 = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ssp1_3_5_annual_precip_scenarios_for_ndr', 'he60pr50.tif')
-
-    precip_raster_path_ssp5 = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ssp1_3_5_annual_precip_scenarios_for_ndr', 'he85pr50.tif')
-
-    ag_load_raster_path_cur = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios', 'ssp1_2015_ag_load.tif')
-    ag_load_raster_path_ssp1 = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios', 'ssp1_2050_ag_load.tif')
-    ag_load_raster_path_ssp3 = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios', 'ssp3_2050_ag_load.tif')
-    ag_load_raster_path_ssp5 = os.path.join(
-        BASE_DROPBOX_DIR, 'ipbes-data',
-        'ag_load_scenarios', 'ssp5_2050_ag_load.tif')
-
-    base_raster_path_list = [
-        watershed_dem_path,
-        landcover_raster_path,
-        precip_raster_path_cur,
-        precip_raster_path_ssp1,
-        precip_raster_path_ssp3,
-        precip_raster_path_ssp5,
-        ag_load_raster_path_cur,
-        ag_load_raster_path_ssp1,
-        ag_load_raster_path_ssp3,
-        ag_load_raster_path_ssp5]
+    base_raster_path_list = (
+        [masked_watershed_dem_path] +
+        [os.path.join(root_data_dir, path)
+         for path in list(LANDCOVER_RASTER_PATHS.values()) +
+         list(PRECIP_RASTER_PATHS.values()) + list(AG_RASTER_PATHS.values())])
 
     aligned_path_list = [
         os.path.join(
@@ -893,94 +893,79 @@ def schedule_watershed_processing(
                 ws_prefix, os.path.splitext(os.path.basename(x))[0]))
         for x in base_raster_path_list]
 
+    wgs84_sr = osr.SpatialReference()
+    wgs84_sr.ImportFromEPSG(4326)
+    local_bounding_box_wgs84 = pygeoprocessing.get_raster_info(
+        masked_watershed_dem_path)['bounding_box']
+    target_bounding_box = pygeoprocessing.transform_bounding_box(
+        local_bounding_box_wgs84, wgs84_sr.ExportToWkt(),
+        epsg_srs.ExportToWkt())
+
     # clip dem, precip, & landcover to size of DEM? use 'mode'
+    # we know the input rasters are WGS84 unprojected
+
     align_resize_task = task_graph.add_task(
         func=pygeoprocessing.align_and_resize_raster_stack,
         args=(
             base_raster_path_list, aligned_path_list,
-            ['nearest', 'mode', 'nearest', 'nearest', 'nearest', 'nearest',
-             'nearest', 'nearest', 'nearest', 'nearest'],
-            (degree_pixel_size, -degree_pixel_size), 'intersection'),
+            ['near'] * len(base_raster_path_list),
+            (utm_pixel_size, -utm_pixel_size),
+            target_bounding_box),
+        kwargs={
+            'base_sr_wkt_list': [wgs84_sr.ExportToWkt()] * len(
+                base_raster_path_list),
+            'target_sr_wkt': epsg_srs.ExportToWkt()
+            },
         target_path_list=aligned_path_list,
-        dependent_task_list=[merge_watershed_dems_task],
-        task_name='align_resize_task_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
-
-    utm_dem_path = os.path.join(
-        ws_working_dir, '%s_%s_dem.tif' % (ws_prefix, epsg_code))
-    utm_landcover_path = os.path.join(
-        ws_working_dir, '%s_%s_landcover.tif' % (ws_prefix, epsg_code))
-    utm_precip_scenario_path = os.path.join(
-        ws_working_dir, '%s_%s_%s.tif' % (ws_prefix, epsg_code, '%s_precip'))
-    utm_ag_load_scenario_path = os.path.join(
-        ws_working_dir, '%s_%s_%s.tif' % (ws_prefix, epsg_code, '%s_ag_load'))
-
-    path_task_id_map = {}
-    for raster_id, base_path, target_path in [
-            ('dem', aligned_path_list[0], utm_dem_path),
-            ('landcover', aligned_path_list[1], utm_landcover_path),
-            ('precip_cur', aligned_path_list[2],
-             utm_precip_scenario_path % 'cur'),
-            ('precip_ssp1', aligned_path_list[3],
-             utm_precip_scenario_path % 'ssp1'),
-            ('precip_ssp3', aligned_path_list[4],
-             utm_precip_scenario_path % 'ssp3'),
-            ('precip_ssp5', aligned_path_list[5],
-             utm_precip_scenario_path % 'ssp5'),
-            ('ag_load_cur', aligned_path_list[6],
-             utm_ag_load_scenario_path % 'cur'),
-            ('ag_load_ssp1', aligned_path_list[7],
-             utm_ag_load_scenario_path % 'ssp1'),
-            ('ag_load_ssp3', aligned_path_list[8],
-             utm_ag_load_scenario_path % 'ssp3'),
-            ('ag_load_ssp5', aligned_path_list[9],
-             utm_ag_load_scenario_path % 'ssp5')]:
-        # determine target pixel size by determining length of degree
-        task = task_graph.add_task(
-            func=pygeoprocessing.warp_raster,
-            args=(
-                base_path, (utm_pixel_size, -utm_pixel_size), target_path,
-                'nearest'),
-            kwargs={'target_sr_wkt': epsg_srs.ExportToWkt()},
-            target_path_list=[target_path],
-            dependent_task_list=[align_resize_task],
-            task_name='warp_raster_%s' % raster_id,
-            priority=task_priority)
-        task_priority -= 1
-        path_task_id_map[raster_id] = (target_path, task)
+        dependent_task_list=[mask_watershed_dem_task],
+        task_name='align resize %s' % ws_prefix,
+        priority=task_id)
 
     # fill and route dem
     filled_watershed_dem_path = os.path.join(
-        ws_working_dir, '%s_filled.tif' % ws_prefix)
+        ws_working_dir, '%s_dem_filled.tif' % ws_prefix)
     flow_dir_path = os.path.join(
         ws_working_dir, '%s_flow_dir.tif' % ws_prefix)
+
     fill_pits_task = task_graph.add_task(
         func=pygeoprocessing.routing.fill_pits,
         args=(
-            (path_task_id_map['dem'][0], 1),
-            filled_watershed_dem_path, flow_dir_path),
-        kwargs={'temp_dir_path': ws_working_dir},
+            (aligned_path_list[0], 1),
+            filled_watershed_dem_path),
+        kwargs={'working_dir': ws_working_dir},
         target_path_list=[
-            filled_watershed_dem_path, flow_dir_path],
-        dependent_task_list=[path_task_id_map['dem'][1]],
-        task_name='fill_pits_task_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+            filled_watershed_dem_path],
+        dependent_task_list=[align_resize_task],
+        task_name='fill pits %s' % ws_prefix,
+        priority=task_id)
+
+    flow_dir_task = task_graph.add_task(
+        func=pygeoprocessing.routing.flow_dir_mfd,
+        args=(
+            (filled_watershed_dem_path, 1),
+            flow_dir_path),
+        kwargs={'working_dir': ws_working_dir},
+        target_path_list=[
+            flow_dir_path],
+        dependent_task_list=[fill_pits_task],
+        task_name='flow dir %s' % ws_prefix,
+        priority=task_id)
 
     # flow accum dem
     flow_accum_path = os.path.join(
         ws_working_dir, '%s_flow_accum.tif' % ws_prefix)
     flow_accum_task = task_graph.add_task(
-        func=pygeoprocessing.routing.flow_accmulation,
+        func=pygeoprocessing.routing.flow_accumulation_mfd,
         args=(
             (flow_dir_path, 1), flow_accum_path),
-        kwargs={'temp_dir_path': ws_working_dir},
         target_path_list=[flow_accum_path],
-        dependent_task_list=[fill_pits_task],
-        task_name='flow_accmulation_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        dependent_task_list=[flow_dir_task],
+        task_name='flow accmulation %s' % ws_prefix,
+        priority=task_id)
+
+    LOGGER.info("don't forget the rest")
+    return
+
 
     # reclassify eff_n
     eff_n_lucode_map = dict(
@@ -1428,7 +1413,7 @@ def mask_raster_by_vector(
     for offset_dict in pygeoprocessing.iterblocks(
             base_raster_path, offset_only=True):
         target_array = target_band.ReadAsArray(**offset_dict)
-        mask_array = numpy.isclose(target_array , 1)
+        mask_array = numpy.isclose(target_array, 1)
         base_array = base_band.ReadAsArray(**offset_dict)
         target_array[mask_array] = base_array[mask_array]
         target_band.WriteArray(

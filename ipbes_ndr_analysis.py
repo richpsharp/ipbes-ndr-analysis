@@ -758,6 +758,13 @@ def main(raw_iam_token_path, raw_workspace_dir):
     unzip_watersheds_task.join()
     build_dem_rtree_task.join()
 
+    biophysical_table = pandas.read_csv(biophysical_table_path)
+
+    eff_n_lucode_map = dict(
+        zip(biophysical_table['ID'], biophysical_table['eff_n']))
+    load_n_lucode_map = dict(
+        zip(biophysical_table['ID'], biophysical_table['load_n']))
+
     LOGGER.info("scheduling watershed processing")
     global_watershed_path_list = glob.glob(
         os.path.join(watersheds_dir_path, '*.shp'))
@@ -781,6 +788,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
             schedule_watershed_processing(
                 task_graph, task_id, ws_prefix, watershed_fid,
                 watershed_feature, dem_rtree_path,
+                eff_n_lucode_map,
+                load_n_lucode_map,
                 dem_path_index_map_path, churn_dir, database_path,
                 watershed_processing_dir)
             watershed_feature = None
@@ -796,7 +805,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
 def schedule_watershed_processing(
         task_graph, task_id, ws_prefix, watershed_fid,
         base_watershed_feature, dem_rtree_path, dem_path_index_map_path,
-        root_data_dir, target_result_database_path, workspace_dir):
+        eff_n_lucode_map, load_n_lucode_map, root_data_dir,
+        target_result_database_path, workspace_dir):
     """Process a watershed for NDR analysis.
 
     A successful call to this function will insert any new geometry
@@ -805,7 +815,7 @@ def schedule_watershed_processing(
 
     Parameters:
         task_graph (TaskGraph): taskgraph scheduler to schedule against.
-        task_id (int): priority to set taskgrpah at.
+        task_id (int): priority to set taskgraph at.
         watershed_fid (integer): FID of the watershed to schedule.
         base_watershed_layer (ogr.Layer): base watershed layer.
         dem_rtree_path (str): path to RTree that can be used to determine
@@ -813,6 +823,8 @@ def schedule_watershed_processing(
         dem_path_index_map_path (str): path to pickled dictionary that maps
             `dem_rtree_path` IDs to file paths of the DEM tile that matches
             that id.
+        eff_n_lucode_map (dict): maps lucodes to NDR efficiency values.
+        load_n_lucode_map (dict): maps lucodes to NDR load values.
         root_data_dir (str): path to directory where all landcover, precip,
             and load rasters can be found.
         target_result_database_path (str): A database that has two tables
@@ -963,53 +975,16 @@ def schedule_watershed_processing(
         task_name='flow accmulation %s' % ws_prefix,
         priority=task_id)
 
-    LOGGER.info("don't forget the rest")
-    return
-
-
-    # reclassify eff_n
-    eff_n_lucode_map = dict(
-        zip(biophysical_table['ID'], biophysical_table['eff_n']))
-    eff_n_raster_path = os.path.join(
-        ws_working_dir, '%s_eff_n.tif' % ws_prefix)
-    reclassify_eff_n_task = task_graph.add_task(
-        func=pygeoprocessing.reclassify_raster,
-        args=(
-            (path_task_id_map['landcover'][0], 1), eff_n_lucode_map,
-            eff_n_raster_path, gdal.GDT_Float32, NODATA),
-        target_path_list=[eff_n_raster_path],
-        dependent_task_list=[path_task_id_map['landcover'][1]],
-        task_name='reclasify_eff_n_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
-
-    # reclassify load_n
-    load_n_raster_path = os.path.join(
-        ws_working_dir, '%s_load_n.tif' % ws_prefix)
-    load_n_lucode_map = dict(
-        zip(biophysical_table['ID'], biophysical_table['load_n']))
-    reclassify_load_n_task = task_graph.add_task(
-        func=pygeoprocessing.reclassify_raster,
-        args=(
-            (path_task_id_map['landcover'][0], 1), load_n_lucode_map,
-            load_n_raster_path, gdal.GDT_Float32, NODATA),
-        target_path_list=[load_n_raster_path],
-        dependent_task_list=[path_task_id_map['landcover'][1]],
-        task_name='reclasify_load_n_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
-
     # calculate slope
     slope_raster_path = os.path.join(
         ws_working_dir, '%s_slope.tif' % ws_prefix)
     calculate_slope_task = task_graph.add_task(
         func=pygeoprocessing.routing.calculate_slope,
-        args=((path_task_id_map['dem'][0], 1), slope_raster_path),
+        args=((filled_watershed_dem_path, 1), slope_raster_path),
         target_path_list=[slope_raster_path],
-        dependent_task_list=[path_task_id_map['dem'][1]],
+        dependent_task_list=[fill_pits_task],
         task_name='calculate_slope_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     clamp_slope_raster_path = os.path.join(
         ws_working_dir, '%s_clamp_slope.tif' % ws_prefix)
@@ -1019,8 +994,7 @@ def schedule_watershed_processing(
         target_path_list=[clamp_slope_raster_path],
         dependent_task_list=[calculate_slope_task],
         task_name='clamp_slope_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     # calculate D_up
     slope_accum_watershed_dem_path = os.path.join(
@@ -1035,8 +1009,7 @@ def schedule_watershed_processing(
         target_path_list=[slope_accum_watershed_dem_path],
         dependent_task_list=[fill_pits_task, clamp_slope_task],
         task_name='slope_accmulation_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
     d_up_task = task_graph.add_task(
@@ -1046,8 +1019,7 @@ def schedule_watershed_processing(
         target_path_list=[d_up_raster_path],
         dependent_task_list=[slope_accmulation_task, flow_accum_task],
         task_name='d_up_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     # calculate flow path in pixels length down to stream
     pixel_flow_length_raster_path = os.path.join(
@@ -1062,8 +1034,7 @@ def schedule_watershed_processing(
         target_path_list=[pixel_flow_length_raster_path],
         dependent_task_list=[fill_pits_task, flow_accum_task],
         task_name='downstream_pixel_flow_length_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     # calculate real flow_path (flow length * pixel size)
     downstream_flow_distance_path = os.path.join(
@@ -1075,8 +1046,7 @@ def schedule_watershed_processing(
         target_path_list=[downstream_flow_distance_path],
         dependent_task_list=[downstream_flow_length_task],
         task_name='downstream_m_flow_dist_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     # calculate downstream distance / downstream slope
     d_dn_per_pixel_path = os.path.join(
@@ -1091,8 +1061,7 @@ def schedule_watershed_processing(
         dependent_task_list=[
             downstream_flow_distance_task, clamp_slope_task],
         task_name='d_dn_per_pixel_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     # calculate D_dn: downstream sum of distance / downstream slope
     d_dn_raster_path = os.path.join(
@@ -1111,8 +1080,7 @@ def schedule_watershed_processing(
         dependent_task_list=[
             fill_pits_task, flow_accum_task, d_dn_per_pixel_task],
         task_name='d_dn_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
 
     # calculate IC
     ic_path = os.path.join(ws_working_dir, '%s_ic.tif' % ws_prefix)
@@ -1124,8 +1092,43 @@ def schedule_watershed_processing(
         target_path_list=[ic_path],
         dependent_task_list=[d_up_task, d_dn_task],
         task_name='ic_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
+
+    LOGGER.warn("don't forget the rest!")
+    return
+
+    # reclassify eff_n
+    for x in landcover_raster_path_lists:
+        eff_n_raster_path = os.path.join(
+            ws_working_dir, '%s_eff_n.tif' % ws_prefix)
+        reclassify_eff_n_task = task_graph.add_task(
+            func=pygeoprocessing.reclassify_raster,
+            args=(
+                (path_task_id_map['landcover'][0], 1), eff_n_lucode_map,
+                eff_n_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[eff_n_raster_path],
+            dependent_task_list=[path_task_id_map['landcover'][1]],
+            task_name='reclasify_eff_n_%s' % ws_prefix,
+            priority=task_priority)
+        task_priority -= 1
+
+        # reclassify load_n
+        load_n_raster_path = os.path.join(
+            ws_working_dir, '%s_load_n.tif' % ws_prefix)
+        load_n_lucode_map = dict(
+            zip(biophysical_table['ID'], biophysical_table['load_n']))
+        reclassify_load_n_task = task_graph.add_task(
+            func=pygeoprocessing.reclassify_raster,
+            args=(
+                (path_task_id_map['landcover'][0], 1), load_n_lucode_map,
+                load_n_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[load_n_raster_path],
+            dependent_task_list=[path_task_id_map['landcover'][1]],
+            task_name='reclasify_load_n_%s' % ws_prefix,
+            priority=task_priority)
+        task_priority -= 1
+
+
 
     # calculate eff_i
     downstream_ret_eff_path = os.path.join(

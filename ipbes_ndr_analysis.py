@@ -73,9 +73,9 @@ PRECIP_RASTER_PATHS = {
     'ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     'ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
     'ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
-    'he26pr50': f'{PRECIP_DIR}/he26pr50.tif',
-    'he60pr50': f'{PRECIP_DIR}/he60pr50.tif',
-    'he85pr50': f'{PRECIP_DIR}/he85pr50.tif',
+    'ssp1_he26pr50': f'{PRECIP_DIR}/he26pr50.tif',
+    'ssp3_he60pr50': f'{PRECIP_DIR}/he60pr50.tif',
+    'ssp5_he85pr50': f'{PRECIP_DIR}/he85pr50.tif',
 }
 
 AG_LOAD_DIR = 'ag_load_scenarios'
@@ -796,6 +796,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
             task_id -= 1
         watershed_layer = None
         watershed_vector = None
+        break
 
     task_graph.close()
     task_graph.join()
@@ -868,9 +869,7 @@ def schedule_watershed_processing(
     epsg_code = int('32%d%02d' % (lat_code, utm_code))
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
-    utm_pixel_size = float(90.0)
-    degree_pixel_size = (
-        utm_pixel_size / length_of_degree(centroid_geom.GetY()))
+    utm_pixel_size = 90.0
 
     local_watershed_path = os.path.join(ws_working_dir, '%s.gpkg' % ws_prefix)
     watershed_geom_wkb = watershed_geometry.ExportToWkb()
@@ -901,11 +900,14 @@ def schedule_watershed_processing(
          for path in list(LANDCOVER_RASTER_PATHS.values()) +
          list(PRECIP_RASTER_PATHS.values()) + list(AG_RASTER_PATHS.values())])
 
-    aligned_path_list = [
-        os.path.join(
+    def _base_to_aligned_path_op(base_path):
+        """Convert global raster path to local."""
+        return os.path.join(
             ws_working_dir, '%s_%s_aligned.tif' % (
-                ws_prefix, os.path.splitext(os.path.basename(x))[0]))
-        for x in base_raster_path_list]
+                ws_prefix, os.path.splitext(os.path.basename(base_path))[0]))
+
+    aligned_path_list = [
+        _base_to_aligned_path_op(path) for path in base_raster_path_list]
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
@@ -979,7 +981,7 @@ def schedule_watershed_processing(
     slope_raster_path = os.path.join(
         ws_working_dir, '%s_slope.tif' % ws_prefix)
     calculate_slope_task = task_graph.add_task(
-        func=pygeoprocessing.routing.calculate_slope,
+        func=pygeoprocessing.calculate_slope,
         args=((filled_watershed_dem_path, 1), slope_raster_path),
         target_path_list=[slope_raster_path],
         dependent_task_list=[fill_pits_task],
@@ -1093,6 +1095,20 @@ def schedule_watershed_processing(
         dependent_task_list=[d_up_task, d_dn_task],
         task_name='ic_%s' % ws_prefix,
         priority=task_id)
+
+    for landcover_id, global_landcover_path in LANDCOVER_RASTER_PATHS.items():
+        local_landcover_path = _base_to_aligned_path_op(global_landcover_path)
+        eff_n_raster_path = os.path.join(
+            ws_working_dir, '%s_eff_n.tif' % ws_prefix)
+        reclassify_eff_n_task = task_graph.add_task(
+            func=pygeoprocessing.reclassify_raster,
+            args=(
+                (local_landcover_path, 1), eff_n_lucode_map,
+                eff_n_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[eff_n_raster_path],
+            dependent_task_list=[align_resize_task],
+            task_name='reclasify_eff_n_%s' % ws_prefix,
+            priority=task_id)
 
     LOGGER.warn("don't forget the rest!")
     return

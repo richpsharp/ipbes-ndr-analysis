@@ -1024,18 +1024,28 @@ def schedule_watershed_processing(
         task_name='d_up_%s' % ws_prefix,
         priority=task_id)
 
+
+    # calculate the flow channels
+    channel_path = os.path.join(ws_working_dir, '%s_channel.tif' % ws_prefix)
+    threshold_flow_task = task_graph.add_task(
+        func=threshold_flow_accumulation,
+        args=(
+            flow_accum_path, FLOW_THRESHOLD, channel_path),
+        target_path_list=[channel_path],
+        dependent_task_list=[flow_accum_task],
+        task_name='threshold flow accum %s' % ws_prefix,
+        priority=task_id)
+
     # calculate flow path in pixels length down to stream
     pixel_flow_length_raster_path = os.path.join(
         ws_working_dir, '%s_pixel_flow_length.tif' % ws_prefix)
     downstream_flow_length_task = task_graph.add_task(
-        func=pygeoprocessing.routing.downstream_flow_length,
+        func=pygeoprocessing.routing.distance_to_channel_mfd,
         args=(
-            (flow_dir_path, 1),
-            (flow_accum_path, 1), FLOW_THRESHOLD,
+            (flow_dir_path, 1), (channel_path, 1),
             pixel_flow_length_raster_path),
-        kwargs={'temp_dir_path': ws_working_dir},
         target_path_list=[pixel_flow_length_raster_path],
-        dependent_task_list=[fill_pits_task, flow_accum_task],
+        dependent_task_list=[fill_pits_task, threshold_flow_task],
         task_name='downstream_pixel_flow_length_%s' % ws_prefix,
         priority=task_id)
 
@@ -1439,6 +1449,37 @@ def mask_raster_by_vector(
         target_band.WriteArray(
             target_array, xoff=offset_dict['xoff'],
             yoff=offset_dict['yoff'])
+
+
+def threshold_flow_accumulation(
+        flow_accum_path, flow_threshold, target_channel_path):
+    """Calculate channel raster by thresholding flow accumulation.
+
+    Parameters:
+        flow_accum_path (str): path to a single band flow accumulation raster.
+        flow_threshold (float): if the value in `flow_accum_path` is less
+            than or equal to this value, the pixel will be classified as a
+            channel.
+        target_channel_path (str): path to target raster that will contain
+            pixels set to 1 if they are a channel, 0 if not, and possibly
+            between 0 and 1 if a partial channel. (to be defined).
+
+    Returns:
+        None.
+    """
+    nodata = pygeoprocessing.get_raster_info(flow_accum_path)['nodata'][0]
+    channel_nodata = -1.0
+
+    def threshold_op(flow_val):
+        valid_mask = ~numpy.isclose(flow_val, nodata)
+        result = numpy.empty(flow_val.shape, dtype=numpy.float32)
+        result[:] = channel_nodata
+        result[valid_mask] = flow_val >= flow_threshold
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [(flow_accum_path, 1)], threshold_op, target_channel_path,
+        gdal.GDT_Float32, channel_nodata)
 
 
 if __name__ == '__main__':

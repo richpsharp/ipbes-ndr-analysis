@@ -788,9 +788,10 @@ def main(raw_iam_token_path, raw_workspace_dir):
             schedule_watershed_processing(
                 task_graph, task_id, ws_prefix, watershed_fid,
                 watershed_feature, dem_rtree_path,
+                dem_path_index_map_path,
                 eff_n_lucode_map,
                 load_n_lucode_map,
-                dem_path_index_map_path, churn_dir, database_path,
+                churn_dir, database_path,
                 watershed_processing_dir)
             watershed_feature = None
             task_id -= 1
@@ -826,8 +827,9 @@ def schedule_watershed_processing(
             that id.
         eff_n_lucode_map (dict): maps lucodes to NDR efficiency values.
         load_n_lucode_map (dict): maps lucodes to NDR load values.
-        root_data_dir (str): path to directory where all landcover, precip,
-            and load rasters can be found.
+        root_data_dir (str): path to directory containing all landcover,
+            precip, and load rasters referenced relatively in
+            LANDCOVER_RASTER_PATHS, PRECIP_RASTER_PATHS, and AG_RASTER_PATHS.
         target_result_database_path (str): A database that has two tables
             'nutrient_export (ws_prefix_key, scenario_key, total_export)'
             'geometry_table (ws_prefix_key, geometry_wkb)'
@@ -1002,11 +1004,10 @@ def schedule_watershed_processing(
     slope_accum_watershed_dem_path = os.path.join(
         ws_working_dir, '%s_s_accum.tif' % ws_prefix)
     slope_accmulation_task = task_graph.add_task(
-        func=pygeoprocessing.routing.flow_accmulation,
+        func=pygeoprocessing.routing.flow_accumulation_mfd,
         args=(
             (flow_dir_path, 1), slope_accum_watershed_dem_path),
         kwargs={
-            'temp_dir_path': ws_working_dir,
             'weight_raster_path_band': (clamp_slope_raster_path, 1)},
         target_path_list=[slope_accum_watershed_dem_path],
         dependent_task_list=[fill_pits_task, clamp_slope_task],
@@ -1444,4 +1445,16 @@ if __name__ == '__main__':
     if len(sys.argv) != 3:
         LOGGER.error(
             "usage: python %s iam_token_path workspace_dir", sys.argv[0])
-    main(sys.argv[1], sys.argv[2])
+        sys.exit(-1)
+    raw_iam_token_path = sys.argv[1]
+    raw_workspace_dir = sys.argv[2]
+    if not os.path.isfile(raw_iam_token_path):
+        LOGGER.error(
+            '%s is not a file, should be an iam token', raw_workspace_dir)
+        sys.exit(-1)
+    if os.path.isfile(raw_workspace_dir):
+        LOGGER.error(
+            '%s is supposed to be the workspace directory but points to an '
+            'existing file' % raw_workspace_dir)
+        sys.exit(-1)
+    main(raw_iam_token_path, raw_workspace_dir)

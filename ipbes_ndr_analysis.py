@@ -1024,7 +1024,6 @@ def schedule_watershed_processing(
         task_name='d_up_%s' % ws_prefix,
         priority=task_id)
 
-
     # calculate the flow channels
     channel_path = os.path.join(ws_working_dir, '%s_channel.tif' % ws_prefix)
     threshold_flow_task = task_graph.add_task(
@@ -1080,7 +1079,7 @@ def schedule_watershed_processing(
     d_dn_raster_path = os.path.join(
         ws_working_dir, '%s_d_dn.tif' % ws_prefix)
     d_dn_task = task_graph.add_task(
-        func=pygeoprocessing.routing.downstream_flow_length,
+        func=pygeoprocessing.routing.distance_to_channel_mfd,
         args=(
             (flow_dir_path, 1),
             (flow_accum_path, 1), FLOW_THRESHOLD,

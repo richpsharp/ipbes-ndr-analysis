@@ -597,8 +597,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         target_path_list=[ag_load_scenarios_touch_file_path],
         dependent_task_list=[fetch_ag_load_scenarios_task],
         task_name=f'unzip ag_load_scenarios')
-    ag_load_scenarios_dir_path = os.path.join(
-        churn_dir, AG_LOAD_DIR)
 
     precip_scenarios_archive_path = os.path.join(
         downloads_dir, 'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip')
@@ -758,7 +756,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
     unzip_watersheds_task.join()
     build_dem_rtree_task.join()
 
-    biophysical_table = pandas.read_csv(biophysical_table_path)
+    with open(clean_biophysical_table_pickle_path, 'rb') as \
+            biophysical_table_file:
+        biophysical_table = dill.load(biophysical_table_file)
 
     eff_n_lucode_map = dict(
         zip(biophysical_table['ID'], biophysical_table['eff_n']))

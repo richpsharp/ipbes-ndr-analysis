@@ -795,6 +795,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 watershed_processing_dir)
             watershed_feature = None
             task_id -= 1
+            break
         watershed_layer = None
         watershed_vector = None
         break
@@ -1104,7 +1105,10 @@ def schedule_watershed_processing(
         priority=task_id)
 
     for landcover_id, global_landcover_path in LANDCOVER_RASTER_PATHS.items():
-        local_landcover_path = _base_to_aligned_path_op(global_landcover_path)
+        local_landcover_path = os.path.join(
+            ws_working_dir, '%s_%s_aligned.tif' % (
+                ws_prefix, os.path.splitext(os.path.basename(
+                    global_landcover_path))[0]))
         eff_n_raster_path = os.path.join(
             ws_working_dir, '%s_eff_n.tif' % ws_prefix)
         reclassify_eff_n_task = task_graph.add_task(
@@ -1114,7 +1118,19 @@ def schedule_watershed_processing(
                 eff_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[eff_n_raster_path],
             dependent_task_list=[align_resize_task],
-            task_name='reclasify_eff_n_%s' % ws_prefix,
+            task_name='reclassify_eff_n_%s' % ws_prefix,
+            priority=task_id)
+
+        load_n_raster_path = os.path.join(
+            ws_working_dir, '%s_load_n.tif' % ws_prefix)
+        reclassify_load_n_task = task_graph.add_task(
+            func=pygeoprocessing.reclassify_raster,
+            args=(
+                (local_landcover_path, 1), load_n_lucode_map,
+                load_n_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[load_n_raster_path],
+            dependent_task_list=[align_resize_task],
+            task_name='reclasify_load_n_%s' % ws_prefix,
             priority=task_id)
 
     LOGGER.warn("don't forget the rest!")

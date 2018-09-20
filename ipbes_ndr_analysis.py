@@ -1149,9 +1149,6 @@ def schedule_watershed_processing(
         task_name='downstream_ret_eff_%s' % ws_prefix,
         priority=task_id)
 
-    LOGGER.warn("don't forget the rest!")
-    return
-
     # calculate NDR specific values
     ndr_path = os.path.join(ws_working_dir, '%s_ndr.tif' % ws_prefix)
     ndr_task = task_graph.add_task(
@@ -1160,8 +1157,11 @@ def schedule_watershed_processing(
         target_path_list=[ndr_path],
         dependent_task_list=[downstream_ret_eff_task, ic_task],
         task_name='ndr_task_%s' % ws_prefix,
-        priority=task_priority)
-    task_priority -= 1
+        priority=task_id)
+
+    LOGGER.warn("don't forget the rest!")
+    return
+
 
     for scenario_key in SCENARIO_LIST:
         # calculate modified load (load * precip)

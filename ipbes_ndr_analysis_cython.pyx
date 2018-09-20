@@ -349,6 +349,7 @@ cdef class _ManagedRaster:
             raster_band = None
             raster = None
 
+
 def calculate_downstream_ret_eff(
         flow_dir_raster_path_band, channel_raster_path_band,
         ret_eff_raster_path_band, double ret_len,
@@ -424,6 +425,10 @@ def calculate_downstream_ret_eff(
         3 # 7
     ]
 
+    LOGGER.info(
+        'starting calculate_downstream_ret_eff for %s',
+        target_downstream_retention_raster_path)
+
     # make an interesting temporary directory that has the time/date and
     # 'flow_accumulation' on it so we can figure out what's going on if we
     # ever run across it in a temp dir.
@@ -457,7 +462,7 @@ def calculate_downstream_ret_eff(
         channel_raster_path_band[1], 0)
     ret_eff_managed_raster = _ManagedRaster(
         ret_eff_raster_path_band[0],
-        ret_eff_raster_path_band[0], 0)
+        ret_eff_raster_path_band[1], 0)
     ret_eff_nodata = pygeoprocessing.get_raster_info(
         ret_eff_raster_path_band[0])['nodata'][
             ret_eff_raster_path_band[1]-1]
@@ -467,7 +472,8 @@ def calculate_downstream_ret_eff(
     cdef double s_i_flat = exp(-5 * cell_size / ret_len)
     cdef double s_i_diag = exp(-5 * cell_size * 1.4142135 / ret_len)
 
-    flow_direction_raster = gdal.Open(flow_dir_raster_path_band[0])
+    flow_direction_raster = gdal.OpenEx(
+        flow_dir_raster_path_band[0], gdal.OF_RASTER)
     flow_direction_band = flow_direction_raster.GetRasterBand(
         flow_dir_raster_path_band[1])
 

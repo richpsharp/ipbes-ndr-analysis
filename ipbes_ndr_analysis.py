@@ -27,7 +27,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = -1
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1
@@ -38,10 +38,10 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
-        ' [%(pathname)s.%(funcName)s:%(lineno)d] %(message)s'),
+        ' [%(funcName)s:%(lineno)d] %(message)s'),
     stream=sys.stdout)
 LOGGER = logging.getLogger(__name__)
 

@@ -1,3 +1,4 @@
+# coding=UTF-8
 """Script to manage NDR runs for IPBES project."""
 import zipfile
 import sys
@@ -1139,8 +1140,8 @@ def schedule_watershed_processing(
     downstream_ret_eff_task = task_graph.add_task(
         func=ipbes_ndr_analysis_cython.calculate_downstream_ret_eff,
         args=(
-            (flow_dir_path, 1), (flow_accum_path, 1), (eff_n_raster_path, 1),
-            FLOW_THRESHOLD, RET_LEN, downstream_ret_eff_path),
+            (flow_dir_path, 1), (channel_path, 1), (eff_n_raster_path, 1),
+            RET_LEN, downstream_ret_eff_path),
         kwargs={'temp_dir_path': ws_working_dir},
         target_path_list=[downstream_ret_eff_path],
         dependent_task_list=[

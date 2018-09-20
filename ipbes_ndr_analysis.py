@@ -676,12 +676,12 @@ def main(raw_iam_token_path, raw_workspace_dir):
         churn_dir, 'watersheds_globe_HydroSHEDS_15arcseconds')
 
     biophysical_table_path = os.path.join(
-        downloads_dir, 'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv')
+        downloads_dir, 'NDR_representative_table_md5_3b5aeb8dba0f615aed858ad98bbfb755.csv')
     download_biophysical_table_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
-            'NDR_representative_table_blake2b_617c8f9038b7557705038682d7445092.csv',
+            'NDR_representative_table_md5_3b5aeb8dba0f615aed858ad98bbfb755.csv',
             iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
         task_name='download biophysical table')
@@ -1081,11 +1081,8 @@ def schedule_watershed_processing(
     d_dn_task = task_graph.add_task(
         func=pygeoprocessing.routing.distance_to_channel_mfd,
         args=(
-            (flow_dir_path, 1),
-            (flow_accum_path, 1), FLOW_THRESHOLD,
-            d_dn_raster_path),
+            (flow_dir_path, 1), (channel_path, 1), d_dn_raster_path),
         kwargs={
-            'temp_dir_path': ws_working_dir,
             'weight_raster_path_band': (d_dn_per_pixel_path, 1)
             },
         target_path_list=[d_dn_raster_path],
@@ -1473,7 +1470,7 @@ def threshold_flow_accumulation(
         valid_mask = ~numpy.isclose(flow_val, nodata)
         result = numpy.empty(flow_val.shape, dtype=numpy.float32)
         result[:] = channel_nodata
-        result[valid_mask] = flow_val >= flow_threshold
+        result[valid_mask] = flow_val[valid_mask] >= flow_threshold
         return result
 
     pygeoprocessing.raster_calculator(

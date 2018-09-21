@@ -744,10 +744,11 @@ def main(raw_iam_token_path, raw_workspace_dir):
         CREATE TABLE IF NOT EXISTS geometry_table (
             ws_prefix_key TEXT NOT NULL,
             geometry_wkb BLOB NOT NULL,
-            PRIMARY KEY (geometry_id)
+            PRIMARY KEY (ws_prefix_key)
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS geometry_id_index
-        ON geometry_table (geometry_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS geometry_key_index
+        ON geometry_table (ws_prefix_key);
         """)
 
     conn = sqlite3.connect(database_path)
@@ -849,7 +850,7 @@ def schedule_watershed_processing(
         "%s_working_dir" % ws_prefix)
 
     watershed_dem_path = os.path.join(
-        ws_working_dir, 'ws_%s_dem.tif' % ws_prefix)
+        ws_working_dir, '%s_dem.tif' % ws_prefix)
 
     watershed_geometry = base_watershed_feature.GetGeometryRef()
     watershed_bb = [
@@ -908,7 +909,9 @@ def schedule_watershed_processing(
         """Convert global raster path to local."""
         return os.path.join(
             ws_working_dir, '%s_%s_aligned.tif' % (
-                ws_prefix, os.path.splitext(os.path.basename(base_path))[0]))
+                ws_prefix,
+                os.path.splitext(os.path.basename(base_path))[0].replace(
+                    ws_prefix, '')))
 
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]

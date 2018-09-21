@@ -226,12 +226,12 @@ def length_of_degree(lat):
     p1 = 111412.84
     p2 = -93.5
     p3 = 0.118
-    lat = -19.7860856226 * math.pi / 180
+    lat_rad = lat * math.pi / 180
     latlen = (
-        m1 + m2 * math.cos(2 * lat) + m3 * math.cos(4 * lat) +
-        m4 * math.cos(6 * lat))
+        m1 + m2 * math.cos(2 * lat_rad) + m3 * math.cos(4 * lat_rad) +
+        m4 * math.cos(6 * lat_rad))
     longlen = abs(
-        p1 * math.cos(lat) + p2 * math.cos(3 * lat) + p3 * math.cos(5 * lat))
+        p1 * math.cos(lat_rad) + p2 * math.cos(3 * lat_rad) + p3 * math.cos(5 * lat_rad))
     return max(latlen, longlen)
 
 

@@ -1113,8 +1113,8 @@ def schedule_watershed_processing(
             ws_working_dir, '%s_%s_aligned.tif' % (
                 ws_prefix, os.path.splitext(os.path.basename(
                     global_landcover_path))[0]))
-        eff_n_raster_path = os.path.join(
-            ws_working_dir, '%s_eff_n.tif' % ws_prefix)
+        eff_n_raster_path = local_landcover_path.replace(
+            '.tif', '_eff_n.tif')
         reclassify_eff_n_task = task_graph.add_task(
             func=pygeoprocessing.reclassify_raster,
             args=(
@@ -1125,8 +1125,8 @@ def schedule_watershed_processing(
             task_name='reclassify_eff_n_%s' % ws_prefix,
             priority=task_id)
 
-        load_n_raster_path = os.path.join(
-            ws_working_dir, '%s_load_n.tif' % ws_prefix)
+        load_n_raster_path = local_landcover_path.replace(
+            '.tif', '_load_n.tif')
         reclassify_load_n_task = task_graph.add_task(
             func=pygeoprocessing.reclassify_raster,
             args=(
@@ -1137,30 +1137,31 @@ def schedule_watershed_processing(
             task_name='reclasify_load_n_%s' % ws_prefix,
             priority=task_id)
 
-    # calculate eff_i
-    downstream_ret_eff_path = os.path.join(
-        ws_working_dir, '%s_downstream_ret_eff.tif' % ws_prefix)
-    downstream_ret_eff_task = task_graph.add_task(
-        func=ipbes_ndr_analysis_cython.calculate_downstream_ret_eff,
-        args=(
-            (flow_dir_path, 1), (channel_path, 1), (eff_n_raster_path, 1),
-            RET_LEN, downstream_ret_eff_path),
-        kwargs={'temp_dir_path': ws_working_dir},
-        target_path_list=[downstream_ret_eff_path],
-        dependent_task_list=[
-            flow_dir_task, flow_accum_task, reclassify_eff_n_task],
-        task_name='downstream_ret_eff_%s' % ws_prefix,
-        priority=task_id)
+        # calculate eff_i
+        downstream_ret_eff_path = local_landcover_path.replace(
+            '.tif', '_downstream_ret_eff.tif')
+        downstream_ret_eff_task = task_graph.add_task(
+            func=ipbes_ndr_analysis_cython.calculate_downstream_ret_eff,
+            args=(
+                (flow_dir_path, 1), (channel_path, 1), (eff_n_raster_path, 1),
+                RET_LEN, downstream_ret_eff_path),
+            kwargs={'temp_dir_path': ws_working_dir},
+            target_path_list=[downstream_ret_eff_path],
+            dependent_task_list=[
+                flow_dir_task, flow_accum_task, reclassify_eff_n_task],
+            task_name='downstream_ret_eff_%s' % ws_prefix,
+            priority=task_id)
 
-    # calculate NDR specific values
-    ndr_path = os.path.join(ws_working_dir, '%s_ndr.tif' % ws_prefix)
-    ndr_task = task_graph.add_task(
-        func=calculate_ndr,
-        args=(downstream_ret_eff_path, ic_path, K_VAL, ndr_path),
-        target_path_list=[ndr_path],
-        dependent_task_list=[downstream_ret_eff_task, ic_task],
-        task_name='ndr_task_%s' % ws_prefix,
-        priority=task_id)
+        # calculate NDR specific values
+        ndr_path = local_landcover_path.replace(
+            '.tif', '_ndr.tif')
+        ndr_task = task_graph.add_task(
+            func=calculate_ndr,
+            args=(downstream_ret_eff_path, ic_path, K_VAL, ndr_path),
+            target_path_list=[ndr_path],
+            dependent_task_list=[downstream_ret_eff_task, ic_task],
+            task_name='ndr_task_%s' % ws_prefix,
+            priority=task_id)
 
     LOGGER.warn("don't forget the rest!")
     return

@@ -1187,7 +1187,7 @@ def schedule_watershed_processing(
             target_path_list=[downstream_ret_eff_path],
             dependent_task_list=[
                 flow_dir_task, flow_accum_task, reclassify_eff_n_task],
-            task_name='downstream_ret_eff_%s' % ws_prefix,
+            task_name='downstream_ret_eff_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
         # calculate NDR specific values
@@ -1198,10 +1198,20 @@ def schedule_watershed_processing(
             args=(downstream_ret_eff_path, ic_path, K_VAL, ndr_path),
             target_path_list=[ndr_path],
             dependent_task_list=[downstream_ret_eff_task, ic_task],
-            task_name='ndr_task_%s' % ws_prefix,
+            task_name='ndr_task_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
-
+        n_export_raster_path = local_landcover_path.replace(
+            '.tif', '_n_export.tif')
+        n_export_task = task_graph.add_task(
+            func=mult_arrays,
+            args=(
+                n_export_raster_path, gdal.GDT_Float32, NODATA,
+                [modified_load_raster_path, ndr_path]),
+            target_path_list=[n_export_raster_path],
+            dependent_task_list=[modified_load_task, ndr_task],
+            task_name='n_export_%s_%s' % (ws_prefix, landcover_id),
+            priority=task_id)
 
     LOGGER.warn("don't forget the rest!")
     return

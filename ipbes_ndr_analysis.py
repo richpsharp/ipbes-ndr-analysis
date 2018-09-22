@@ -83,7 +83,9 @@ AG_LOAD_DIR = 'ag_load_scenarios'
 AG_RASTER_PATHS = {
     '1850': f'{AG_LOAD_DIR}/1850_ag_load.tif',
     '1900': f'{AG_LOAD_DIR}/1900_ag_load.tif',
-    '1920': f'{AG_LOAD_DIR}/1920_ag_load.tif',
+    # 1910 has no ag loading, but 1920 did and so Becky wanted to use that
+    # for the 1910 landcover scenario
+    '1910': f'{AG_LOAD_DIR}/1920_ag_load.tif',
     '1945': f'{AG_LOAD_DIR}/1945_ag_load.tif',
     '1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
     '2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
@@ -1134,7 +1136,24 @@ def schedule_watershed_processing(
                 load_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[load_n_raster_path],
             dependent_task_list=[align_resize_task],
-            task_name='reclasify_load_n_%s' % ws_prefix,
+            task_name='reclasify_load_n_%s_%s' % (ws_prefix, landcover_id),
+            priority=task_id)
+
+        local_ag_load_path = os.path.join(
+            ws_working_dir, '%s_%s_aligned.tif' % (
+                ws_prefix, os.path.splitext(
+                    os.path.basename(AG_RASTER_PATHS[landcover_id]))[0]))
+
+        ag_load_path = local_landcover_path.replace(
+            '.tif', '_ag_load_n.tif')
+        scenario_load_task = task_graph.add_task(
+            func=calculate_ag_load,
+            args=(
+                load_n_raster_path, local_ag_load_path, ag_load_path),
+            target_path_list=[ag_load_path],
+            dependent_task_list=[
+                reclassify_load_n_task, align_resize_task],
+            task_name='scenario_load_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
         # calculate eff_i
@@ -1162,6 +1181,8 @@ def schedule_watershed_processing(
             dependent_task_list=[downstream_ret_eff_task, ic_task],
             task_name='ndr_task_%s' % ws_prefix,
             priority=task_id)
+
+
 
     LOGGER.warn("don't forget the rest!")
     return

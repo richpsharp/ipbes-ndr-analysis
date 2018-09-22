@@ -66,6 +66,8 @@ LANDCOVER_RASTER_PATHS = {
 
 PRECIP_DIR = 'precip_scenarios'
 PRECIP_RASTER_PATHS = {
+    # we don't have 1850 data so we'll use 1900 for 1850
+    '1850': f'{PRECIP_DIR}/precip_1900.tif',
     '1900': f'{PRECIP_DIR}/precip_1900.tif',
     '1910': f'{PRECIP_DIR}/precip_1910.tif',
     '1945': f'{PRECIP_DIR}/precip_1945.tif',
@@ -1156,6 +1158,23 @@ def schedule_watershed_processing(
             task_name='scenario_load_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
+        # calculate modified load (load * precip)
+        modified_load_raster_path = local_landcover_path.replace(
+            '.tif', '_modified_load.tif')
+        local_precip_path = os.path.join(
+            ws_working_dir, '%s_%s_aligned.tif' % (
+                ws_prefix, os.path.splitext(
+                    os.path.basename(PRECIP_RASTER_PATHS[landcover_id]))[0]))
+        modified_load_task = task_graph.add_task(
+            func=mult_arrays,
+            args=(
+                modified_load_raster_path, gdal.GDT_Float32,
+                NODATA, [ag_load_path, local_precip_path]),
+            target_path_list=[modified_load_raster_path],
+            dependent_task_list=[scenario_load_task, align_resize_task],
+            task_name='modified_load_%s_%s' % (ws_prefix, landcover_id),
+            priority=task_id)
+
         # calculate eff_i
         downstream_ret_eff_path = local_landcover_path.replace(
             '.tif', '_downstream_ret_eff.tif')
@@ -1187,25 +1206,7 @@ def schedule_watershed_processing(
     LOGGER.warn("don't forget the rest!")
     return
 
-
     for scenario_key in SCENARIO_LIST:
-        # calculate modified load (load * precip)
-        # calculate scenario AG load
-        scenario_ag_load_path = os.path.join(
-            ws_working_dir, '%s_%s_ag_load.tif' % (ws_prefix, scenario_key))
-        scenario_load_task = task_graph.add_task(
-            func=calculate_ag_load,
-            args=(
-                load_n_raster_path,
-                path_task_id_map['ag_load_%s' % scenario_key][0],
-                scenario_ag_load_path),
-            target_path_list=[scenario_ag_load_path],
-            dependent_task_list=[
-                reclassify_load_n_task,
-                path_task_id_map['ag_load_%s' % scenario_key][1]],
-            task_name='scenario_load_%s_%s' % (ws_prefix, scenario_key),
-            priority=task_priority)
-        task_priority -= 1
 
         # calculate modified load (load * precip)
         modified_load_raster_path = os.path.join(

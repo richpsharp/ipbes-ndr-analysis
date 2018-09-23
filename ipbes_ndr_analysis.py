@@ -28,7 +28,7 @@ import pyximport
 pyximport.install()
 import ipbes_ndr_analysis_cython
 
-N_CPUS = -1
+N_CPUS = 4
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1
@@ -1023,7 +1023,8 @@ def schedule_watershed_processing(
         args=(
             (flow_dir_path, 1), (channel_path, 1),
             pixel_flow_length_raster_path),
-        target_path_list=[pixel_flow_length_raster_path],
+        target_path_list=[
+            pixel_flow_length_raster_path],
         dependent_task_list=[fill_pits_task, threshold_flow_task],
         task_name='downstream_pixel_flow_length_%s' % ws_prefix,
         priority=task_id)
@@ -1067,7 +1068,8 @@ def schedule_watershed_processing(
             },
         target_path_list=[d_dn_raster_path],
         dependent_task_list=[
-            fill_pits_task, flow_accum_task, d_dn_per_pixel_task],
+            fill_pits_task, flow_accum_task, d_dn_per_pixel_task,
+            threshold_flow_task],
         task_name='d_dn_%s' % ws_prefix,
         priority=task_id)
 
@@ -1157,7 +1159,8 @@ def schedule_watershed_processing(
             kwargs={'temp_dir_path': ws_working_dir},
             target_path_list=[downstream_ret_eff_path],
             dependent_task_list=[
-                flow_dir_task, flow_accum_task, reclassify_eff_n_task],
+                flow_dir_task, flow_accum_task, reclassify_eff_n_task,
+                threshold_flow_task],
             task_name='downstream_ret_eff_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 

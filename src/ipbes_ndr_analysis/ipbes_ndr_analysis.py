@@ -766,10 +766,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 watershed_processing_dir)
             watershed_feature = None
             task_id -= 1
-            break
         watershed_layer = None
         watershed_vector = None
-        break
 
     task_graph.close()
     task_graph.join()

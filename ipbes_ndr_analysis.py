@@ -9,6 +9,7 @@ import os
 import glob
 import math
 import sqlite3
+import multiprocessing
 
 import reproduce.utils
 import taskgraph
@@ -318,9 +319,8 @@ def result_in_database(database_path, ws_prefix):
 
 
 def aggregate_to_database(
-        n_export_raster_path, global_watershed_path, global_watershed_id,
-        local_watershed_path, ws_prefix, scenario_key, aggregate_field_name,
-        database_lock, target_database_path):
+        n_export_raster_path, ws_prefix, scenario_key,
+        database_lock, target_database_path, target_touch_path):
     """Aggregate nutrient load and save to database.
 
     This function creates a new database if it does not exist and aggregates
@@ -328,77 +328,40 @@ def aggregate_to_database(
 
     Parameters:
         n_export_raster_path (string): path to nutrient export raster in
-            units of kg/Ha.
-        global_watershed_path (string): path to global shapefile where
-            `feature_id` is an element. This lets us save the geometry to
-            the database.
-        global_watershed_id (int): feature id in global watershed that's
-            represented in the local watershed.
-        local_watershed_path (string): path to a locally projected shapefile
-            with the local watershed. This is used for aggregation.
-        ws_prefix (string): used to insert in databases
-        scenario_key (string): used to insert in database
-        aggregate_field_name (string): unique key in local watershed feature
-        target_database_path (string): path to SQLite Database. If not exists
-            create a table called 'nutrient_export' with fields:
-                * ws_prefix_key (string identifying unique global watershed)
-                * scenario_key (string identifying which scenario)
-                * total_export (float indicating total export from watershed)
-                * geometry (geometry saved as Wkt)
+            units of kg/Ha. Values outside the watershed will be nodata.
+        ws_prefix (string): watershed ID used to uniquely identify the
+            watershed.
+        scenario_key (string): used to insert in database (values like 2015
+            ssp1, 1850, etc.)
+        database_lock (multiprocessing.Lock): lock to ensure single access to
+            writing the database.
+        target_database_path (string): path to SQLite Database.
+            WRITE SOEMTHING HERE ABOUT THE EXEPCTED TABLE
+        target_touch_path (string): path to a file that will be created if
+            the function call is successful.
 
     Returns:
         None.
     """
+    n_export_sum = 0.0
+    n_export_nodata = pygeoprocessing.get_raster_info(
+        n_export_raster_path)['nodata'][0]
+    pixel_area_ha = pygeoprocessing.get_raster_info(
+        n_export_raster_path)['mean_pixel_size']**2 * 0.0001
+
+    for _, data_block in pygeoprocessing.iterblocks(n_export_raster_path):
+        n_export_sum += numpy.sum(
+            data_block[~numpy.isclose(data_block, n_export_nodata)])
+    total_export = n_export_sum * pixel_area_ha
+
     with database_lock:
-        LOGGER.info(
-            '********* aggregating results for %s %s', ws_prefix,
-            scenario_key)
-        # create a database connection
         conn = sqlite3.connect(target_database_path)
         if conn is not None:
             cursor = conn.cursor()
-            cursor.execute(
-                """SELECT ws_prefix_key, scenario_key FROM nutrient_export
-                WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
-                    ws_prefix, scenario_key))
-            db_result = cursor.fetchone()
-            if db_result is not None:
-                # already in table, skipping
-                LOGGER.debug(
-                    "already in table %s %s %s" % (
-                        ws_prefix, scenario_key, db_result))
-                LOGGER.debug(
-                    "result of in table %s" % result_in_database(
-                        target_database_path, ws_prefix))
-                LOGGER.debug(target_database_path)
-                return
-
-            result = pygeoprocessing.zonal_statistics(
-                (n_export_raster_path, 1), local_watershed_path,
-                aggregate_field_name, polygons_might_overlap=False)
-
-            pixel_area_ha = pygeoprocessing.get_raster_info(
-                n_export_raster_path)['mean_pixel_size']**2 * 0.0001
-            total_export = result.itervalues().next()['sum'] * pixel_area_ha
-            # ran into case where total export was none maybe because of bad data?
-            if total_export is None or math.isnan(total_export):
-                total_export = -1
-
-            global_watershed_vector = gdal.OpenEx(
-                global_watershed_path, gdal.OF_VECTOR)
-            global_watershed_layer = global_watershed_vector.GetLayer()
-            global_watershed_feature = global_watershed_layer.GetFeature(
-                global_watershed_id)
-            global_watershed_geom = global_watershed_feature.GetGeometryRef()
-            geometry_wkt = global_watershed_geom.ExportToWkt()
-            global_watershed_geom = None
-            global_watershed_feature = None
-            global_watershed_layer = None
-            global_watershed_vector = None
             try:
                 cursor.execute(
-                    """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""",
-                    (ws_prefix, scenario_key, total_export, geometry_wkt))
+                    """INSERT INTO nutrient_export VALUES (?, ?, ?)""",
+                    (ws_prefix, scenario_key, total_export))
             except:
                 LOGGER.exception('"%s"', total_export)
             conn.commit()
@@ -406,6 +369,8 @@ def aggregate_to_database(
         else:
             raise IOError(
                 "Error! cannot create the database connection.")
+    with open(target_touch_path, 'w') as touch_file:
+        touch_file.write('%s %s' % (ws_prefix, scenario_key))
 
 
 def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
@@ -420,6 +385,7 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
 
     Returns:
         None.
+
     """
     # calculate ic_0
     ic_raster = gdal.OpenEx(ic_path, gdal.OF_RASTER)
@@ -758,6 +724,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
     cursor.executescript(sql_create_projects_table)
+    multiprocessing_manager = multiprocessing.Manager()
+    database_lock = multiprocessing_manager.Lock()
 
     unzip_watersheds_task.join()
     build_dem_rtree_task.join()
@@ -792,8 +760,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 # want.
                 continue
             schedule_watershed_processing(
-                task_graph, task_id, ws_prefix, watershed_fid,
-                watershed_feature, dem_rtree_path,
+                task_graph, database_path, database_lock, task_id, ws_prefix,
+                watershed_fid, watershed_feature, dem_rtree_path,
                 dem_path_index_map_path,
                 eff_n_lucode_map,
                 load_n_lucode_map,
@@ -812,10 +780,10 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
 
 def schedule_watershed_processing(
-        task_graph, task_id, ws_prefix, watershed_fid,
-        base_watershed_feature, dem_rtree_path, dem_path_index_map_path,
-        eff_n_lucode_map, load_n_lucode_map, root_data_dir,
-        target_result_database_path, workspace_dir):
+        task_graph, database_path, database_lock, task_id, ws_prefix,
+        watershed_fid, base_watershed_feature, dem_rtree_path,
+        dem_path_index_map_path, eff_n_lucode_map, load_n_lucode_map,
+        root_data_dir, target_result_database_path, workspace_dir):
     """Process a watershed for NDR analysis.
 
     A successful call to this function will insert any new geometry
@@ -824,6 +792,9 @@ def schedule_watershed_processing(
 
     Parameters:
         task_graph (TaskGraph): taskgraph scheduler to schedule against.
+        database_path (str): path to SQLITE3 database.
+        database_lock (multiprocessing.Lock): used to synchronize access to
+            the database.
         task_id (int): priority to set taskgraph at.
         watershed_fid (integer): FID of the watershed to schedule.
         base_watershed_layer (ogr.Layer): base watershed layer.
@@ -1213,54 +1184,16 @@ def schedule_watershed_processing(
             task_name='n_export_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
-    LOGGER.warn("don't forget the rest!")
-    return
-
-    for scenario_key in SCENARIO_LIST:
-
-        # calculate modified load (load * precip)
-        modified_load_raster_path = os.path.join(
-            ws_working_dir, '%s_%s_modified_load.tif' % (
-                ws_prefix, scenario_key))
-        modified_load_task = task_graph.add_task(
-            func=mult_arrays,
-            args=(
-                modified_load_raster_path, gdal.GDT_Float32,
-                NODATA, [
-                    scenario_ag_load_path,
-                    path_task_id_map['precip_%s' % scenario_key][0]]),
-            target_path_list=[modified_load_raster_path],
-            dependent_task_list=[
-                scenario_load_task,
-                path_task_id_map['precip_%s' % scenario_key][1]],
-            task_name='modified_load_%s' % ws_prefix,
-            priority=task_priority)
-        task_priority -= 1
-
-        n_export_raster_path = os.path.join(
-            ws_working_dir, '%s_%s_n_export.tif' % (
-                ws_prefix, scenario_key))
-        n_export_task = task_graph.add_task(
-            func=mult_arrays,
-            args=(
-                n_export_raster_path, gdal.GDT_Float32, NODATA,
-                [modified_load_raster_path, ndr_path]),
-            target_path_list=[n_export_raster_path],
-            dependent_task_list=[modified_load_task, ndr_task],
-            priority=task_priority,
-            task_name='n_export_%s_%s' % (scenario_key, ws_prefix))
-        task_priority -= 1
-
+        target_touch_path = local_landcover_path.replace(
+            '.tif', '_database_insert.txt')
         aggregate_result_task = task_graph.add_task(
             func=aggregate_to_database,
             args=(
-                n_export_raster_path, global_watershed_path, watershed_id,
-                local_watershed_path, ws_prefix, scenario_key, 'BASIN_ID',
-                database_lock, database_path),
+                n_export_raster_path, ws_prefix, landcover_id,
+                database_lock, database_path, target_touch_path),
             dependent_task_list=[n_export_task, reproject_watershed_task],
-            priority=task_priority,
-            task_name='aggregate_result_%s_%s' % (scenario_key, ws_prefix))
-        task_priority -= 1
+            task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
+            priority=task_id)
 
 
 def merge_watershed_dems(

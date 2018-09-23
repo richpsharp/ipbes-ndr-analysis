@@ -410,7 +410,10 @@ def calc_ic(d_up_array, d_dn_array):
     result[:] = NODATA
     zero_mask = (d_dn_array == 0) | (d_up_array == 0)
     valid_mask = (
-        (d_up_array != NODATA) & (d_dn_array != NODATA) & (~zero_mask))
+        ~numpy.isclose(d_up_array, NODATA) &
+        ~numpy.isclose(d_dn_array, NODATA) &
+        (d_up_array > 0) & (d_dn_array > 0) &
+        ~zero_mask)
     result[valid_mask] = numpy.log10(
         d_up_array[valid_mask] / d_dn_array[valid_mask])
     result[zero_mask] = 0.0
@@ -1192,6 +1195,44 @@ def schedule_watershed_processing(
             dependent_task_list=[n_export_task, reproject_watershed_task],
             task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
+
+    insert_watershed_geometry_task = task_graph.add_task(
+        func=insert_watershed_geometry,
+        args=(
+            database_path, database_lock, ws_prefix,
+            watershed_geometry.ExportToWkb()),
+        task_name='insert geometry %s' % ws_prefix,
+        priority=task_id)
+
+
+def insert_watershed_geometry(
+        database_path, database_lock, ws_prefix, watershed_geometry_wkt):
+    """Add watershed geometry to database if not exists.
+
+    Parameters:
+        database_path (str): path to SQLITE database.
+        ws_prefix (str): watershed prefix/key
+        watershed_geometry_wkt (str): geometry of watershed in WKT.
+
+    Returns:
+        None.
+
+    """
+    geom_sql_insert_string = (
+        """INSERT OR IGNORE INTO geometry_table VALUES (?, ?)""")
+
+    with database_lock:
+        conn = sqlite3.connect(database_path)
+        if conn is not None:
+            cursor = conn.cursor()
+            cursor.execute(
+                geom_sql_insert_string, (
+                    ws_prefix, watershed_geometry_wkt))
+            conn.commit()
+            conn.close()
+        else:
+            raise IOError(
+                "Error! cannot create the database connection.")
 
 
 def merge_watershed_dems(

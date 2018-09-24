@@ -402,8 +402,10 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
                         1 - downstream_ret_eff_array[valid_mask]) / (
                             1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
                 return result
-            except Warning:
-                LOGGER.debug('bad values: %s %s', ic_array[valid_mask], ic_0)
+            except FloatingPointError:
+                LOGGER.debug(
+                    'bad values: %s %s %s', ic_array[valid_mask], ic_0,
+                    ic_path)
                 raise
 
     pygeoprocessing.raster_calculator(
@@ -884,11 +886,12 @@ def schedule_watershed_processing(
             reproject_watershed_task, merge_watershed_dems_task],
         task_name='mask dem %s' % ws_prefix)
 
-    base_raster_path_list = (
-        [masked_watershed_dem_path] +
+    base_raster_path_list = list(set(
         [os.path.join(root_data_dir, path)
          for path in list(LANDCOVER_RASTER_PATHS.values()) +
-         list(PRECIP_RASTER_PATHS.values()) + list(AG_RASTER_PATHS.values())])
+         list(PRECIP_RASTER_PATHS.values()) +
+         list(AG_RASTER_PATHS.values())]))
+    base_raster_path_list.append(masked_watershed_dem_path)
 
     def _base_to_aligned_path_op(base_path):
         """Convert global raster path to local."""
@@ -900,17 +903,7 @@ def schedule_watershed_processing(
 
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]
-    aligned_dem_path = aligned_path_list[
-        base_raster_path_list.index(masked_watershed_dem_path)]
-
-    # remove any duplicates
-    aligned_path_list = sorted(
-        list(set(aligned_path_list)), key=os.path.basename)
-    base_raster_path_list = sorted(
-        list(set(base_raster_path_list)), key=os.path.basename)
-
-    LOGGER.debug(base_raster_path_list)
-    LOGGER.debug(aligned_path_list)
+    aligned_dem_path = aligned_path_list[-1]
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)

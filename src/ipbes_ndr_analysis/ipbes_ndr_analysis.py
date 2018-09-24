@@ -395,8 +395,10 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
         result[:] = NODATA
         valid_mask = (
             downstream_ret_eff_array != NODATA) & (ic_array != IC_NODATA)
-        result[valid_mask] = (1 - downstream_ret_eff_array[valid_mask]) / (
-            1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
+        if numpy.count_nonzero(valid_mask) > 0:
+            result[valid_mask] = (
+                1 - downstream_ret_eff_array[valid_mask]) / (
+                    1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
         return result
 
     pygeoprocessing.raster_calculator(

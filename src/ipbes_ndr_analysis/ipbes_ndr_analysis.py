@@ -391,15 +391,20 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
 
     def ndr_op(downstream_ret_eff_array, ic_array):
         """Calculate NDR from Eq. (4)."""
-        result = numpy.empty_like(downstream_ret_eff_array)
-        result[:] = NODATA
-        valid_mask = (
-            downstream_ret_eff_array != NODATA) & (ic_array != IC_NODATA)
-        if numpy.count_nonzero(valid_mask) > 0:
-            result[valid_mask] = (
-                1 - downstream_ret_eff_array[valid_mask]) / (
-                    1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
-        return result
+        with numpy.errstate(invalid='raise'):
+            try:
+                result = numpy.empty_like(downstream_ret_eff_array)
+                result[:] = NODATA
+                valid_mask = (
+                    downstream_ret_eff_array != NODATA) & (ic_array != IC_NODATA)
+                if numpy.count_nonzero(valid_mask) > 0:
+                    result[valid_mask] = (
+                        1 - downstream_ret_eff_array[valid_mask]) / (
+                            1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
+                return result
+            except Warning:
+                LOGGER.debug('bad values: %s %s', ic_array[valid_mask], ic_0)
+                raise
 
     pygeoprocessing.raster_calculator(
         [(downstream_ret_eff_path, 1), (ic_path, 1)], ndr_op, target_ndr_path,

@@ -761,7 +761,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 continue
             schedule_watershed_processing(
                 task_graph, database_path, database_lock, task_id, ws_prefix,
-                watershed_fid, watershed_feature, dem_rtree_path,
+                global_watershed_path, watershed_fid, dem_rtree_path,
                 dem_path_index_map_path,
                 eff_n_lucode_map,
                 load_n_lucode_map,
@@ -779,7 +779,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
 def schedule_watershed_processing(
         task_graph, database_path, database_lock, task_id, ws_prefix,
-        watershed_fid, base_watershed_feature, dem_rtree_path,
+        watershed_path, watershed_fid, dem_rtree_path,
         dem_path_index_map_path, eff_n_lucode_map, load_n_lucode_map,
         root_data_dir, target_result_database_path, workspace_dir):
     """Process a watershed for NDR analysis.
@@ -794,8 +794,6 @@ def schedule_watershed_processing(
         database_lock (multiprocessing.Lock): used to synchronize access to
             the database.
         task_id (int): priority to set taskgraph at.
-        watershed_fid (integer): FID of the watershed to schedule.
-        base_watershed_layer (ogr.Layer): base watershed layer.
         dem_rtree_path (str): path to RTree that can be used to determine
             which DEM tiles intersect a bounding box.
         dem_path_index_map_path (str): path to pickled dictionary that maps
@@ -814,6 +812,11 @@ def schedule_watershed_processing(
     Returns:
         None.
     """
+    watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
+    watershed_layer = watershed_vector.GetLayer()
+    watershed_feature = watershed_layer.GetFeature(watershed_fid)
+    watershed_fid = watershed_feature.GetFID()
+
     # make a few subdirectories so we don't explode on number of files per
     # directory. The largest watershed is 726k
     last_digits = '%.4d' % watershed_fid
@@ -825,7 +828,7 @@ def schedule_watershed_processing(
     watershed_dem_path = os.path.join(
         ws_working_dir, '%s_dem.tif' % ws_prefix)
 
-    watershed_geometry = base_watershed_feature.GetGeometryRef()
+    watershed_geometry = watershed_feature.GetGeometryRef()
     watershed_bb = [
         watershed_geometry.GetEnvelope()[i] for i in [0, 2, 1, 3]]
 
@@ -849,15 +852,17 @@ def schedule_watershed_processing(
     epsg_srs.ImportFromEPSG(epsg_code)
     utm_pixel_size = 90.0
 
+    watershed_geometry = None
+    watershed_layer = None
+    watershed_vector = None
+
     local_watershed_path = os.path.join(ws_working_dir, '%s.gpkg' % ws_prefix)
-    watershed_geom_wkb = watershed_geometry.ExportToWkb()
 
     reproject_watershed_task = task_graph.add_task(
         func=reproject_geometry_to_target,
         args=(
-            watershed_geom_wkb,
-            watershed_geometry.GetSpatialReference().ExportToWkt(),
-            epsg_srs.ExportToWkt(), local_watershed_path),
+            watershed_path, watershed_fid, epsg_srs.ExportToWkt(),
+            local_watershed_path),
         target_path_list=[local_watershed_path],
         task_name='project_watershed_%s' % ws_prefix,
         priority=task_id)
@@ -892,8 +897,13 @@ def schedule_watershed_processing(
         base_raster_path_list.index(masked_watershed_dem_path)]
 
     # remove any duplicates
-    aligned_path_list = sorted(list(set(aligned_path_list)))
-    base_raster_path_list = sorted(list(set(base_raster_path_list)))
+    aligned_path_list = sorted(
+        list(set(aligned_path_list)), key=os.path.basename)
+    base_raster_path_list = sorted(
+        list(set(base_raster_path_list)), key=os.path.basename)
+
+    LOGGER.debug(base_raster_path_list)
+    LOGGER.debug(aligned_path_list)
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
@@ -1206,19 +1216,22 @@ def schedule_watershed_processing(
         func=insert_watershed_geometry,
         args=(
             database_path, database_lock, ws_prefix,
-            watershed_geometry.ExportToWkb()),
+            watershed_path, watershed_fid),
         task_name='insert geometry %s' % ws_prefix,
         priority=task_id)
 
 
 def insert_watershed_geometry(
-        database_path, database_lock, ws_prefix, watershed_geometry_wkt):
+        database_path, database_lock, ws_prefix, watershed_path,
+        watershed_fid):
     """Add watershed geometry to database if not exists.
 
     Parameters:
         database_path (str): path to SQLITE database.
         ws_prefix (str): watershed prefix/key
         watershed_geometry_wkt (str): geometry of watershed in WKT.
+        watershed_path (str): path to watershed vector.
+        watershed_fid (int): FID for the watershed to insert.
 
     Returns:
         None.
@@ -1227,13 +1240,19 @@ def insert_watershed_geometry(
     geom_sql_insert_string = (
         """INSERT OR IGNORE INTO geometry_table VALUES (?, ?)""")
 
+    watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
+    watershed_layer = watershed_vector.GetLayer()
+    watershed_feature = watershed_layer.GetFeature(watershed_fid)
+    watershed_geometry = watershed_feature.GetGeometryRef()
+    watershed_geometry_wkb = watershed_geometry.ExportToWkb()
+
     with database_lock:
         conn = sqlite3.connect(database_path)
         if conn is not None:
             cursor = conn.cursor()
             cursor.execute(
                 geom_sql_insert_string, (
-                    ws_prefix, watershed_geometry_wkt))
+                    ws_prefix, watershed_geometry_wkb))
             conn.commit()
             conn.close()
         else:
@@ -1322,15 +1341,15 @@ def build_raster_rtree(
 
 
 def reproject_geometry_to_target(
-        geom_wkb, base_sr_wkt, target_sr_wkt, target_path):
+        vector_path, feature_id, target_sr_wkt, target_path):
     """Reproject a single OGR DataSource feature.
 
     Transforms the features of the base vector to the desired output
     projection in a new ESRI Shapefile.
 
     Parameters:
-        geom_wkt (str): base geometry in wkb.
-        base_sr_wkt (str): the spatial reference in wkt for `geom_wkb`.
+        vector_path (str): path to vector
+        feature_id (int): feature ID to reproject.
         target_sr_wkt (str): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         feature_id (int): the feature to reproject and copy.
@@ -1338,7 +1357,19 @@ def reproject_geometry_to_target(
 
     Returns:
         None
+
     """
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
+    layer = vector.GetLayer()
+    feature = layer.GetFeature(feature_id)
+    geom = feature.GetGeometryRef()
+    geom_wkb = geom.ExportToWkb()
+    base_sr_wkt = geom.GetSpatialReference().ExportToWkt()
+    geom = None
+    feature = None
+    layer = None
+    vector = None
+
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     # if this file already exists, then remove it
     if os.path.isfile(target_path):

@@ -25,7 +25,7 @@ import pygeoprocessing.routing
 
 import ipbes_ndr_analysis_cython
 
-N_CPUS = 4
+N_CPUS = max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1

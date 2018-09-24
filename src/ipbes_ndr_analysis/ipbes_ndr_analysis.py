@@ -888,6 +888,12 @@ def schedule_watershed_processing(
 
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]
+    aligned_dem_path = aligned_path_list[
+        base_raster_path_list.index(masked_watershed_dem_path)]
+
+    # remove any duplicates
+    aligned_path_list = sorted(list(set(aligned_path_list)))
+    base_raster_path_list = sorted(list(set(base_raster_path_list)))
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
@@ -924,7 +930,7 @@ def schedule_watershed_processing(
     fill_pits_task = task_graph.add_task(
         func=pygeoprocessing.routing.fill_pits,
         args=(
-            (aligned_path_list[0], 1),
+            (aligned_dem_path, 1),
             filled_watershed_dem_path),
         kwargs={'working_dir': ws_working_dir},
         target_path_list=[

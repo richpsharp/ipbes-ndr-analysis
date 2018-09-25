@@ -97,66 +97,60 @@ AG_RASTER_PATHS = {
     'ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
 }
 
-def db_to_shapefile(database_path):
-    """Converts db to shapefile every `sleep_time` seconds."""
+def db_to_shapefile(database_path, target_vector_path):
+    """Convert database to vector.
+
+    Parameters:
+        database_path (str): path to an SQLITE3 database with tables for
+            biophysical properties and """
     LOGGER.info("reporting results")
     try:
-        target_shapefile_path = os.path.join(
-            TASKGRAPH_DIR, '25_jan_2018_results_ha.gpkg')
-        if os.path.exists(target_shapefile_path):
-            os.remove(target_shapefile_path)
+        if os.path.exists(target_vector_path):
+            os.remove(target_vector_path)
         try:
-            os.makedirs(TASKGRAPH_DIR)
+            os.makedirs(os.path.dirname(target_vector_path))
         except OSError:
             pass
-
-        # create a shapefile with these fields:
-        # ws_id (text)
-        # cur_n_exp
-        # ssp1_n_exp
-        # ssp3_n_exp
-        # ssp5_n_exp
 
         wgs84_sr = osr.SpatialReference()
         wgs84_sr.ImportFromEPSG(4326)
 
-        driver = gdal.GetDriverByName('ESRI Shapefile')
+        driver = gdal.GetDriverByName('GPKG')
         result_vector = driver.Create(
-            target_shapefile_path, 0, 0, 0, gdal.GDT_Unknown)
+            target_vector_path, 0, 0, 0, gdal.GDT_Unknown)
         result_layer = result_vector.CreateLayer(
-            os.path.splitext(os.path.basename(target_shapefile_path))[0],
+            os.path.splitext(os.path.basename(target_vector_path))[0],
             wgs84_sr, ogr.wkbPolygon)
         ws_field = ogr.FieldDefn("ws_id", ogr.OFTString)
         ws_field.SetWidth(24)
         result_layer.CreateField(ws_field)
 
-        area_field = ogr.FieldDefn(
-            'area_ha', ogr.OFTReal)
+        area_field = ogr.FieldDefn('area_ha', ogr.OFTReal)
         area_field.SetWidth(32)
         area_field.SetPrecision(11)
         result_layer.CreateField(area_field)
 
-        for scenario in SCENARIO_LIST:
-            scenario_field = ogr.FieldDefn(
-                '%snex' % scenario, ogr.OFTReal)
-            scenario_field.SetWidth(32)
-            scenario_field.SetPrecision(11)
-            result_layer.CreateField(scenario_field)
+        result_layer.CreateField(ogr.FieldDefn('country', ogr.OFTString))
+        result_layer.CreateField(ogr.FieldDefn('region', ogr.OFTString))
 
-            scenario_field = ogr.FieldDefn(
-                '%snexha' % scenario, ogr.OFTReal)
-            scenario_field.SetWidth(32)
-            scenario_field.SetPrecision(11)
-            result_layer.CreateField(scenario_field)
+        for scenario in PRECIP_RASTER_PATHS:
+            load_field = ogr.FieldDefn('%s_load' % scenario, ogr.OFTReal)
+            load_field.SetWidth(32)
+            load_field.SetPrecision(11)
+            result_layer.CreateField(load_field)
+
+            export_field = ogr.FieldDefn('%s_nexport' % scenario, ogr.OFTReal)
+            export_field.SetWidth(32)
+            export_field.SetPrecision(11)
+            result_layer.CreateField(export_field)
 
         conn = sqlite3.connect(database_path)
         if conn is not None:
             cursor = conn.cursor()
-            scenaro_cursor = conn.cursor()
             try:
                 cursor.execute(
-                    """SELECT ws_prefix_key, geometry_wkt
-                        FROM nutrient_export GROUP BY ws_prefix_key;""")
+                    """SELECT ws_prefix_key, geometry_wgs84_wkb
+                       FROM geometry_table;""")
             except sqlite3.OperationalError:
                 LOGGER.exception('SQL Error in `db_to_shapefile')
             for ws_id, ws_geom in cursor:
@@ -180,43 +174,18 @@ def db_to_shapefile(database_path):
 
                 # m^2 to Ha
                 feature_area_ha = local_feature_geom.GetArea() * 0.0001
-
                 feature.SetField('area_ha', feature_area_ha)
+                LOGGER.error(
+                    "implement this part that copies exports to vector")
 
-                for scenario in SCENARIO_LIST:
-                    scenaro_cursor.execute(
-                        """SELECT total_export FROM nutrient_export
-                        WHERE (ws_prefix_key = ? and scenario_key = ?)""",
-                        (ws_id, scenario))
-                    result = scenaro_cursor.fetchone()
-                    if result is not None:
-                        feature.SetField('%snex' % scenario, result[0])
-                        feature.SetField(
-                            '%snexha' % scenario, result[0] / feature_area_ha)
+                for scenario in PRECIP_RASTER_PATHS:
+                    pass
 
                 result_layer.CreateFeature(feature)
 
         result_vector.FlushCache()
         result_layer = None
         result_vector = None
-
-        for old_timestamp_file_path in glob.glob(
-                os.path.join(RESULTS_DIR, '*.txt')):
-            os.remove(old_timestamp_file_path)
-        timestring = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
-        timestamp_path = os.path.join(RESULTS_DIR, 'last_update_%s.txt' % (
-            timestring))
-        for file_path in glob.glob('results_v_china.*'):
-            dst_file = os.path.join(RESULTS_DIR, file_path)
-            if os.path.exists(dst_file):
-                os.remove(dst_file)
-            shutil.copy2(file_path, dst_file)
-        with open(timestamp_path, 'w') as timestamp_file:
-            timestamp_file.write(
-                "Hi, I'm an automatically generated file.\n"
-                "I last updated NDR results on %s.\n" % timestring +
-                "There will be an 'all done.txt' file here when everything "
-                "is done.\n")
     except Exception:
         LOGGER.exception(
             "There was an exception during results reporting.")
@@ -725,7 +694,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
         CREATE TABLE IF NOT EXISTS geometry_table (
             ws_prefix_key TEXT NOT NULL,
-            geometry_wkb BLOB NOT NULL,
+            geometry_wgs84_wkb BLOB NOT NULL,
             PRIMARY KEY (ws_prefix_key)
         );
 

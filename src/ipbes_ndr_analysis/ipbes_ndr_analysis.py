@@ -25,6 +25,9 @@ import pygeoprocessing.routing
 
 import ipbes_ndr_analysis_cython
 
+# set a 1GB limit for the cache
+gdal.SetCacheMax(2**30)
+
 N_CPUS = max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False

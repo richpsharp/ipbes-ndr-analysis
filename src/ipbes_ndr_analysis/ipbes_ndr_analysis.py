@@ -61,6 +61,9 @@ LANDCOVER_RASTER_PATHS = {
     'ssp1': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif",
     'ssp3': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif",
     'ssp5': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif",
+    'ssp1_he26pr50': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif",
+    'ssp3_he60pr50': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif",
+    'ssp5_he85pr50': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif",
 }
 
 PRECIP_DIR = 'precip_scenarios'
@@ -93,6 +96,9 @@ AG_RASTER_PATHS = {
     'ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
     'ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
     'ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
+    'ssp1_he26pr50': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
+    'ssp3_he60pr50': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
+    'ssp5_he85pr50': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
 }
 
 def db_to_shapefile(database_path, target_vector_path):
@@ -265,16 +271,18 @@ def calculate_ag_load(
 
 
 def aggregate_to_database(
-        n_export_raster_path, ws_prefix, scenario_key,
-        database_lock, target_database_path, target_touch_path):
-    """Aggregate nutrient load and save to database.
+        n_export_raster_path, n_modified_load_raster_path, ws_prefix,
+        scenario_key, database_lock, target_database_path, target_touch_path):
+    """Aggregate nutrient export and load and save to database.
 
     This function creates a new database if it does not exist and aggregates
         values and inserts a new row if the row does not already exist.
 
     Parameters:
         n_export_raster_path (string): path to nutrient export raster in
-            units of kg/Ha. Values outside the watershed will be nodata.
+            units of kg/pixel/yr. Values outside the watershed will be nodata.
+        n_modified_load_raster_path (string): path to nutrient load raster in
+            units of kg/pixel/yr. Values outside the watershed will be nodata.
         ws_prefix (string): watershed ID used to uniquely identify the
             watershed.
         scenario_key (string): used to insert in database (values like 2015
@@ -292,13 +300,16 @@ def aggregate_to_database(
     n_export_sum = 0.0
     n_export_nodata = pygeoprocessing.get_raster_info(
         n_export_raster_path)['nodata'][0]
-    pixel_area_ha = pygeoprocessing.get_raster_info(
-        n_export_raster_path)['mean_pixel_size']**2 * 0.0001
-
     for _, data_block in pygeoprocessing.iterblocks(n_export_raster_path):
         n_export_sum += numpy.sum(
             data_block[~numpy.isclose(data_block, n_export_nodata)])
-    total_export = n_export_sum * pixel_area_ha
+    n_modified_load_sum = 0.0
+    n_modified_load_nodata = pygeoprocessing.get_raster_info(
+        n_modified_load_raster_path)['nodata'][0]
+    for _, data_block in pygeoprocessing.iterblocks(
+            n_modified_load_raster_path):
+        n_modified_load_sum += numpy.sum(
+            data_block[~numpy.isclose(data_block, n_modified_load_nodata)])
 
     with database_lock:
         conn = sqlite3.connect(target_database_path)
@@ -306,10 +317,11 @@ def aggregate_to_database(
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    """INSERT INTO nutrient_export VALUES (?, ?, ?)""",
-                    (ws_prefix, scenario_key, total_export))
+                    """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""", (
+                        ws_prefix, scenario_key, n_export_sum,
+                        n_modified_load_sum))
             except:
-                LOGGER.exception('"%s"', total_export)
+                LOGGER.exception('"%s %s"', n_export_sum, n_modified_load_sum)
             conn.commit()
             conn.close()
         else:
@@ -389,18 +401,23 @@ def mult_arrays(
 
     def _mult_arrays(*array_list):
         """Multiply arrays in array list but block out stacks with NODATA."""
-        stack = numpy.stack(array_list)
-        valid_mask = (numpy.bitwise_and.reduce(
-            [~numpy.isclose(nodata, array)
-             for nodata, array in zip(nodata_array, stack)], axis=0))
-        n_valid = numpy.count_nonzero(valid_mask)
-        broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
-        valid_stack = stack[broadcast_valid_mask].reshape(
-            len(array_list), n_valid)
-        result = numpy.empty(array_list[0].shape, dtype=numpy.float64)
-        result[:] = NODATA
-        result[valid_mask] = numpy.prod(valid_stack, axis=0)
-        return result
+        try:
+            stack = numpy.stack(array_list)
+            valid_mask = (numpy.bitwise_and.reduce(
+                [~numpy.isclose(nodata, array)
+                 for nodata, array in zip(nodata_array, stack)], axis=0))
+            n_valid = numpy.count_nonzero(valid_mask)
+            broadcast_valid_mask = numpy.broadcast_to(valid_mask, stack.shape)
+            valid_stack = stack[broadcast_valid_mask].reshape(
+                len(array_list), n_valid)
+            result = numpy.empty(array_list[0].shape, dtype=numpy.float64)
+            result[:] = NODATA
+            result[valid_mask] = numpy.prod(valid_stack, axis=0)
+            return result
+        except:
+            LOGGER.exception(
+                'values: %s', array_list)
+            raise
 
     pygeoprocessing.raster_calculator(
         [(path, 1) for path in raster_path_list], _mult_arrays,
@@ -664,7 +681,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
         CREATE TABLE IF NOT EXISTS nutrient_export (
             ws_prefix_key TEXT NOT NULL,
             scenario_key TEXT NOT NULL,
-            total_export REAL NOT NULL,
+            nutrient_export REAL NOT NULL,
+            modified_load REAL NOT NULL,
             PRIMARY KEY (ws_prefix_key, scenario_key)
         );
         CREATE UNIQUE INDEX IF NOT EXISTS ws_scenario_index
@@ -675,6 +693,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
         CREATE TABLE IF NOT EXISTS geometry_table (
             ws_prefix_key TEXT NOT NULL,
             geometry_wgs84_wkb BLOB NOT NULL,
+            region TEXT NOT NULL,
+            country TEXT NOT NULL,
             PRIMARY KEY (ws_prefix_key)
         );
 
@@ -1065,7 +1085,7 @@ def schedule_watershed_processing(
                 eff_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[eff_n_raster_path],
             dependent_task_list=[align_resize_task],
-            task_name='reclassify_eff_n_%s' % ws_prefix,
+            task_name='reclassify_eff_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
         load_n_raster_path = local_landcover_path.replace(
@@ -1190,7 +1210,7 @@ def insert_watershed_geometry(
 
     """
     geom_sql_insert_string = (
-        """INSERT OR IGNORE INTO geometry_table VALUES (?, ?)""")
+        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?)""")
 
     watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
     watershed_layer = watershed_vector.GetLayer()

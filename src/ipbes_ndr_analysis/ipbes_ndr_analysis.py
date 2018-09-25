@@ -1,5 +1,6 @@
 # coding=UTF-8
 """Script to manage NDR runs for IPBES project."""
+import time
 import zipfile
 import sys
 import logging
@@ -15,6 +16,7 @@ import numpy
 import pandas
 import dill
 import rtree.index
+import shapely
 from osgeo import ogr
 from osgeo import gdal
 from osgeo import osr
@@ -742,7 +744,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()
 
-    unzip_watersheds_task.join()
     build_dem_rtree_task.join()
 
     with open(clean_biophysical_table_pickle_path, 'rb') as \
@@ -754,9 +755,27 @@ def main(raw_iam_token_path, raw_workspace_dir):
     load_n_lucode_map = dict(
         zip(biophysical_table['ID'], biophysical_table['load_n']))
 
-    LOGGER.info("scheduling watershed processing")
+    tm_world_borders_path = os.path.join(
+        churn_dir, 'TM_WORLD_BORDERS-0.3.shp')
     global_watershed_path_list = glob.glob(
         os.path.join(watersheds_dir_path, '*.shp'))
+    regions_table_path = os.path.join(
+        downloads_dir,
+        'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv')
+
+    finished_watershed_geometry_touch_path = os.path.join(
+        churn_dir, 'finished_watershed_geometry.touch')
+    add_watershed_regions_task = task_graph.add_task(
+        func=add_watershed_geometry_and_regions,
+        args=(
+            database_path, database_lock, tm_world_borders_path,
+            regions_table_path, global_watershed_path_list,
+            finished_watershed_geometry_touch_path),
+        target_path_list=[finished_watershed_geometry_touch_path],
+        dependent_task_list=[
+            unzip_watersheds_task, unzip_world_borders_task])
+
+    LOGGER.info("scheduling watershed processing")
     task_id = 0
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
@@ -1157,7 +1176,7 @@ def schedule_watershed_processing(
 
         # calculate modified load (load * precip)
         modified_load_raster_path = local_landcover_path.replace(
-            '.tif', '_modified_load.tif')
+            '.tif', '_%s_modified_load.tif' % landcover_id)
         local_precip_path = os.path.join(
             ws_working_dir, '%s_%s_aligned.tif' % (
                 ws_prefix, os.path.splitext(
@@ -1200,7 +1219,7 @@ def schedule_watershed_processing(
             priority=task_id)
 
         n_export_raster_path = local_landcover_path.replace(
-            '.tif', '_n_export.tif')
+            '.tif', '_%s_n_export.tif' % (landcover_id))
         n_export_task = task_graph.add_task(
             func=mult_arrays,
             args=(
@@ -1223,53 +1242,6 @@ def schedule_watershed_processing(
                 n_export_task, modified_load_task, reproject_watershed_task],
             task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
-
-    insert_watershed_geometry_task = task_graph.add_task(
-        func=insert_watershed_geometry,
-        args=(
-            database_path, database_lock, ws_prefix,
-            watershed_path, watershed_fid),
-        task_name='insert geometry %s' % ws_prefix,
-        priority=task_id)
-
-
-def insert_watershed_geometry(
-        database_path, database_lock, ws_prefix, watershed_path,
-        watershed_fid):
-    """Add watershed geometry to database if not exists.
-
-    Parameters:
-        database_path (str): path to SQLITE database.
-        ws_prefix (str): watershed prefix/key
-        watershed_geometry_wkt (str): geometry of watershed in WKT.
-        watershed_path (str): path to watershed vector.
-        watershed_fid (int): FID for the watershed to insert.
-
-    Returns:
-        None.
-
-    """
-    geom_sql_insert_string = (
-        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?, ?, ?)""")
-
-    watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
-    watershed_layer = watershed_vector.GetLayer()
-    watershed_feature = watershed_layer.GetFeature(watershed_fid)
-    watershed_geometry = watershed_feature.GetGeometryRef()
-    watershed_geometry_wkb = watershed_geometry.ExportToWkb()
-
-    with database_lock:
-        conn = sqlite3.connect(database_path)
-        if conn is not None:
-            cursor = conn.cursor()
-            cursor.execute(
-                geom_sql_insert_string, (
-                    ws_prefix, watershed_geometry_wkb, 'region', 'country'))
-            conn.commit()
-            conn.close()
-        else:
-            raise IOError(
-                "Error! cannot create the database connection.")
 
 
 def merge_watershed_dems(
@@ -1516,3 +1488,94 @@ def threshold_flow_accumulation(
     pygeoprocessing.raster_calculator(
         [(flow_accum_path, 1)], threshold_op, target_channel_path,
         gdal.GDT_Float32, channel_nodata)
+
+
+def build_spatial_index(vector_path):
+    """Build an rtree/geom list tuple from ``vector_path``."""
+    vector = gdal.OpenEx(vector_path)
+    layer = vector.GetLayer()
+    geom_index = rtree.index.Index()
+    geom_list = []
+    for index in range(layer.GetFeatureCount()):
+        feature = layer.GetFeature(index)
+        geom = feature.GetGeometryRef()
+        shapely_geom = shapely.wkb.loads(geom.ExportToWkb())
+        shapely_prep_geom = shapely.prepared.prep(shapely_geom)
+        geom_list.append(shapely_prep_geom)
+        geom_index.insert(index, shapely_geom.bounds)
+
+    return geom_index, geom_list
+
+
+def add_watershed_geometry_and_regions(
+        database_path, database_lock, tm_world_borders_path,
+        regions_table_path, watershed_path_list, finished_touch_file):
+    """Add watershed geometry, country, and region to database table."""
+    LOGGER.info("build country spatial index")
+    country_rtree, country_geom_list = build_spatial_index(
+        tm_world_borders_path)
+
+    country_vector = gdal.OpenEx(tm_world_borders_path, gdal.OF_VECTOR)
+    country_layer = country_vector.GetLayer()
+
+    countries_myregions_df = pandas.read_csv(
+        regions_table_path, usecols=['country', 'myregions'], sep=',')
+    country_to_region_dict = {
+        row[1][1]: row[1][0] for row in countries_myregions_df.iterrows()}
+
+    geom_sql_insert_string = (
+        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?, ?, ?)""")
+
+    last_time = time.time()
+
+    n_features = 0
+    for watershed_path in watershed_path_list:
+        watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
+        watershed_layer = watershed_vector.GetLayer()
+        n_features += watershed_layer.GetFeatureCount()
+
+    features_processed = 0
+    database_lock.acquire()
+    with sqlite3.connect(database_path) as conn:
+        for watershed_path in watershed_path_list:
+            watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
+            watershed_layer = watershed_vector.GetLayer()
+
+            watershed_basename = os.path.splitext(
+                os.path.basename(watershed_path))[0]
+            for watershed_feature in watershed_layer:
+                current_time = time.time()
+                if current_time - last_time > 5.0:
+                    LOGGER.info(
+                        "processing watershed geometry %.2f%% complete",
+                        float(features_processed) / n_features * 100.0)
+                    last_time = current_time
+                    conn.commit()
+                    database_lock.release()
+                    database_lock.acquire()
+                ws_prefix = 'ws_%s_%d' % (
+                    watershed_basename, watershed_feature.GetFID())
+                watershed_geometry = watershed_feature.GetGeometryRef()
+                watershed_shapely = shapely.wkb.loads(
+                    watershed_geometry.ExportToWkb())
+
+                for country_index in country_rtree.intersection(
+                        watershed_shapely.bounds):
+                    if country_geom_list[country_index].intersects(
+                            watershed_shapely):
+                        country_name = country_layer.GetFeature(
+                            country_index).GetField('name')
+                        try:
+                            region = country_to_region_dict[country_name]
+                        except KeyError:
+                            region = 'UNKNOWN'
+
+                        conn.execute(
+                            geom_sql_insert_string,
+                            (ws_prefix, watershed_geometry.ExportToWkb(),
+                             country_name, region))
+                features_processed += 1
+    database_lock.release()
+    with open(finished_touch_file, 'w') as finished_file:
+        finished_file.write('all done!')
+

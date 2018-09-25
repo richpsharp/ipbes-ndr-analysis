@@ -640,6 +640,40 @@ def main(raw_iam_token_path, raw_workspace_dir):
         target_path_list=[clean_biophysical_table_pickle_path],
         dependent_task_list=[download_biophysical_table_task])
 
+    countries_regions_table_path = os.path.join(
+        downloads_dir,
+        'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv')
+    download_countries_regions_table_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ipbes-ndr-ecoshard-data',
+            'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv',
+            iam_token_path, countries_regions_table_path),
+        target_path_list=[countries_regions_table_path],
+        task_name='download countries_regions table')
+
+    tm_world_borders_archive_path = os.path.join(
+        downloads_dir,
+        'TM_WORLD_BORDERS_SIMPL-0.3_md5_15057f7b17752048f9bd2e2e607fe99c.zip')
+    download_tm_world_borders_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ecoshard-root',
+            'ipbes/TM_WORLD_BORDERS_SIMPL-0.3_md5_15057f7b17752048f9bd2e2e607fe99c.zip',
+            iam_token_path, tm_world_borders_archive_path),
+        target_path_list=[tm_world_borders_archive_path],
+        task_name='download countries_regions table')
+    world_borders_file_path = os.path.join(
+        churn_dir, os.path.basename(tm_world_borders_archive_path) + '_unzipped')
+    unzip_world_borders_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            tm_world_borders_archive_path, churn_dir,
+            world_borders_file_path),
+        target_path_list=[world_borders_file_path],
+        dependent_task_list=[download_tm_world_borders_task],
+        task_name=f'unzip global_dem')
+
     global_dem_archive_path = os.path.join(
         downloads_dir, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
     global_dem_download_task = task_graph.add_task(
@@ -746,6 +780,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 dem_path_index_map_path,
                 eff_n_lucode_map,
                 load_n_lucode_map,
+                countries_regions_table_path,
                 churn_dir, database_path,
                 watershed_processing_dir)
             watershed_feature = None
@@ -762,6 +797,7 @@ def schedule_watershed_processing(
         task_graph, database_path, database_lock, task_id, ws_prefix,
         watershed_path, watershed_fid, dem_rtree_path,
         dem_path_index_map_path, eff_n_lucode_map, load_n_lucode_map,
+        countries_regions_table_path,
         root_data_dir, target_result_database_path, workspace_dir):
     """Process a watershed for NDR analysis.
 
@@ -782,6 +818,8 @@ def schedule_watershed_processing(
             that id.
         eff_n_lucode_map (dict): maps lucodes to NDR efficiency values.
         load_n_lucode_map (dict): maps lucodes to NDR load values.
+        countries_regions_table_path (str): path to a table that maps country
+            names to region names with headers 'myregions', and 'country'.
         root_data_dir (str): path to directory containing all landcover,
             precip, and load rasters referenced relatively in
             LANDCOVER_RASTER_PATHS, PRECIP_RASTER_PATHS, and AG_RASTER_PATHS.
@@ -1178,9 +1216,11 @@ def schedule_watershed_processing(
         aggregate_result_task = task_graph.add_task(
             func=aggregate_to_database,
             args=(
-                n_export_raster_path, ws_prefix, landcover_id,
-                database_lock, database_path, target_touch_path),
-            dependent_task_list=[n_export_task, reproject_watershed_task],
+                n_export_raster_path, modified_load_raster_path, ws_prefix,
+                landcover_id, database_lock, database_path,
+                target_touch_path),
+            dependent_task_list=[
+                n_export_task, modified_load_task, reproject_watershed_task],
             task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
@@ -1210,7 +1250,7 @@ def insert_watershed_geometry(
 
     """
     geom_sql_insert_string = (
-        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?)""")
+        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?, ?, ?)""")
 
     watershed_vector = gdal.OpenEx(watershed_path, gdal.OF_VECTOR)
     watershed_layer = watershed_vector.GetLayer()
@@ -1224,7 +1264,7 @@ def insert_watershed_geometry(
             cursor = conn.cursor()
             cursor.execute(
                 geom_sql_insert_string, (
-                    ws_prefix, watershed_geometry_wkb))
+                    ws_prefix, watershed_geometry_wkb, 'region', 'country'))
             conn.commit()
             conn.close()
         else:

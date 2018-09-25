@@ -2,8 +2,6 @@
 """Script to manage NDR runs for IPBES project."""
 import zipfile
 import sys
-import shutil
-import datetime
 import logging
 import os
 import glob
@@ -266,27 +264,6 @@ def calculate_ag_load(
         gdal.GDT_Float32, nodata)
 
 
-def result_in_database(database_path, ws_prefix):
-    """True if ws_prefix in database."""
-    conn = sqlite3.connect(database_path)
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            for scenario in SCENARIO_LIST:
-                cursor.execute(
-                    """SELECT total_export FROM nutrient_export
-                    WHERE (ws_prefix_key = ? and scenario_key = ?)""", (
-                        ws_prefix, scenario))
-                result = cursor.fetchone()
-                if result is None:
-                    return False
-            return True
-        except sqlite3.OperationalError:
-            LOGGER.exception("operational error on %s"% ws_prefix)
-            return False
-    return False
-
-
 def aggregate_to_database(
         n_export_raster_path, ws_prefix, scenario_key,
         database_lock, target_database_path, target_touch_path):
@@ -368,11 +345,13 @@ def calculate_ndr(downstream_ret_eff_path, ic_path, k_val, target_ndr_path):
                 result = numpy.empty_like(downstream_ret_eff_array)
                 result[:] = NODATA
                 valid_mask = (
-                    downstream_ret_eff_array != NODATA) & (ic_array != IC_NODATA)
+                    downstream_ret_eff_array != NODATA) & (
+                        ic_array != IC_NODATA)
                 if numpy.count_nonzero(valid_mask) > 0:
                     result[valid_mask] = (
                         1 - downstream_ret_eff_array[valid_mask]) / (
-                            1 + numpy.exp((ic_array[valid_mask] - ic_0) / k_val))
+                            1 + numpy.exp(
+                                (ic_array[valid_mask] - ic_0) / k_val))
                 return result
             except FloatingPointError:
                 LOGGER.debug(
@@ -462,6 +441,7 @@ class MultByScalar(taskgraph.EncapsulatedTaskOp):
         pygeoprocessing.raster_calculator(
             [self.raster_path_band], mult_by_scalar, self.target_path,
             gdal.GDT_Float32, self.target_nodata)
+
 
 class DUpOp(taskgraph.EncapsulatedTaskOp):
     """Calculate D_up from Equation 7 of NDR user's guide.

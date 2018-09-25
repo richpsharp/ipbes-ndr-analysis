@@ -526,39 +526,39 @@ def main(raw_iam_token_path, raw_workspace_dir):
         os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
         TASKGRAPH_REPORTING_FREQUENCY, TASKGRAPH_DELAYED_START)
 
-    gpw_urls = {
+    gpw_buckets = {
         'gpw_v4_e_a000_014ft_2010_dens': (
-            'https://storage.cloud.google.com/ecoshard-root/ipbes/'
-            'gpw_v4_e_a000_014ft_2010_dens_30_sec_md5_'
+            'ecoshard-root',
+            'ipbes/gpw_v4_e_a000_014ft_2010_dens_30_sec_md5_'
             '8b2871967b71534d56d2df83e413bf33.tif'),
         'gpw_v4_e_a000_014mt_2010_dens': (
-            'https://storage.cloud.google.com/ecoshard-root/ipbes/'
-            'gpw_v4_e_a000_014mt_2010_dens_30_sec_md5_'
+            'ecoshard-root',
+            'ipbes/gpw_v4_e_a000_014mt_2010_dens_30_sec_md5_'
             '8ddf234eabc0025efd5678776e2ae792.tif'),
         'gpw_v4_e_a065plusft_2010_dens': (
-            'https://storage.cloud.google.com/ecoshard-root/ipbes/'
-            'gpw_v4_e_a065plusft_2010_dens_30_sec_md5_'
+            'ecoshard-root',
+            'ipbes/gpw_v4_e_a065plusft_2010_dens_30_sec_md5_'
             'c0cfbc8685dbf16cbe520aac963cd6b6.tif'),
         'gpw_v4_e_a065plusmt_2010_dens': (
-            'https://storage.cloud.google.com/ecoshard-root/ipbes/'
-            'gpw_v4_e_a065plusmt_2010_dens_30_sec_md5_'
+            'ecoshard-root',
+            'ipbes/gpw_v4_e_a065plusmt_2010_dens_30_sec_md5_'
             '1d36e79aa083ee25de7295a4a7d10a4b.tif'),
         'gpw_v4_e_atotpopft_2010_dens': (
-            'https://storage.cloud.google.com/ecoshard-root/ipbes/'
-            'gpw_v4_e_atotpopft_2010_dens_30_sec_md5_'
+            'ecoshard-root',
+            'ipbes/gpw_v4_e_atotpopft_2010_dens_30_sec_md5_'
             '5bbb72a050c76264e1b6a3c7530fedce.tif'),
         'gpw_v4_e_atotpopmt_2010_dens': (
-            'https://storage.cloud.google.com/ecoshard-root/ipbes/'
-            'gpw_v4_e_atotpopmt_2010_dens_30_sec_md5_'
+            'ecoshard-root',
+            'ipbes/gpw_v4_e_atotpopmt_2010_dens_30_sec_md5_'
             '31637ca784b8b917222661d4a915ead6.tif'),
     }
 
-    for gpw_id, gpw_url in gpw_urls.items():
+    for gpw_id, (gpw_bucket, gpw_blob_id) in gpw_buckets.items():
         gpw_dens_path = os.path.join(
-            downloads_dir, 'gpw_pop_densities', os.path.basename(gpw_url))
+            downloads_dir, 'gpw_pop_densities', os.path.basename(gpw_blob_id))
         gpw_fetch_task = task_graph.add_task(
             func=reproduce.utils.google_bucket_fetch_and_validate,
-            args=(gpw_url, iam_token_path, gpw_dens_path),
+            args=(gpw_bucket, gpw_blob_id, iam_token_path, gpw_dens_path),
             target_path_list=[gpw_dens_path],
             task_name=f"""fetch {os.path.basename(gpw_dens_path)}""",
             priority=100)

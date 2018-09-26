@@ -57,7 +57,7 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -1037,12 +1037,12 @@ def schedule_watershed_processing(
             reproject_watershed_task, merge_watershed_dems_task],
         task_name='mask dem %s' % ws_prefix)
 
-    base_raster_path_list = list(set(
+    base_raster_path_list = sorted(list(set(
         [os.path.join(root_data_dir, path)
          for path in list(LANDCOVER_RASTER_PATHS.values()) +
          list(PRECIP_RASTER_PATHS.values()) +
          list(AG_RASTER_PATHS.values()) +
-         list(POPULATION_RASTER_PATHS.values())]))
+         list(POPULATION_RASTER_PATHS.values())])))
     base_raster_path_list.extend(
         [gpw_2010_total_dens_path, masked_watershed_dem_path])
 

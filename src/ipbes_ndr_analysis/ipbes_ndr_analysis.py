@@ -46,7 +46,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS = max(1, multiprocessing.cpu_count())
+N_CPUS = -1# max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1
@@ -57,7 +57,7 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -119,6 +119,18 @@ AG_RASTER_PATHS = {
     'ssp1_he26pr50': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
     'ssp3_he60pr50': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
     'ssp5_he85pr50': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
+}
+
+POPULATION_SCENARIOS_DIR = 'spatial_population_scenarios'
+POPULATION_RASTER_PATHS = {
+    '2015_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/rural/GeoTIFF/ssp1rur2010.tif',
+    '2015_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/total/GeoTIFF/ssp1_2010.tif',
+    '2050ssp1_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/rural/GeoTIFF/ssp1rur2050.tif',
+    '2050ssp1_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/total/GeoTIFF/ssp1_2050.tif',
+    '2050ssp3_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP3_GeoTIFF/rural/GeoTIFF/ssp3rur2050.tif',
+    '2050ssp3_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP3_GeoTIFF/total/GeoTIFF/ssp3_2050.tif',
+    '2050ssp5_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP5_GeoTIFF/rural/GeoTIFF/ssp5rur2050.tif',
+    '2050ssp5_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP5_GeoTIFF/total/GeoTIFF/ssp5_2050.tif',
 }
 
 def db_to_shapefile(database_path, target_vector_path):
@@ -534,6 +546,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
     churn_dir = os.path.join(workspace_dir, CHURN_DIR)
     watershed_processing_dir = os.path.join(
         workspace_dir, WATERSHED_PROCESSING_DIR)
+    gpw_2010_dir = os.path.join(
+        workspace_dir, BUCKET_DOWNLOAD_DIR, 'gpw_pop_densities')
 
     try:
         os.makedirs(workspace_dir)
@@ -571,15 +585,52 @@ def main(raw_iam_token_path, raw_workspace_dir):
             '31637ca784b8b917222661d4a915ead6.tif'),
     }
 
+    gpw_intermediate_path_list = []
     for gpw_id, (gpw_bucket, gpw_blob_id) in gpw_buckets.items():
         gpw_dens_path = os.path.join(
-            downloads_dir, 'gpw_pop_densities', os.path.basename(gpw_blob_id))
+            gpw_2010_dir, os.path.basename(gpw_blob_id))
         gpw_fetch_task = task_graph.add_task(
             func=reproduce.utils.google_bucket_fetch_and_validate,
             args=(gpw_bucket, gpw_blob_id, iam_token_path, gpw_dens_path),
             target_path_list=[gpw_dens_path],
             task_name=f"""fetch {os.path.basename(gpw_dens_path)}""",
             priority=100)
+        gpw_intermediate_path_list.append(gpw_dens_path)
+
+    gpw_total_dens_path = os.path.join(churn_dir, 'gpw_2010_total_dens.tif')
+    add_gpw_task = task_graph.add_task(
+        func=add_rasters,
+        args=(gpw_intermediate_path_list, gpw_total_dens_path),
+        target_path_list=[gpw_total_dens_path],
+        task_name=f'add gpw totals',
+        priority=100)
+
+    spatial_population_scenarios_path = os.path.join(
+        downloads_dir, 'Spatial_population_scenarios_GeoTIFF_'
+        'md5_1c4b6d87cb9a167585e1fc49914248fd.zip')
+
+    fetch_spatial_population_scenarios_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ecoshard-root',
+            'ipbes/Spatial_population_scenarios_GeoTIFF_md5_1c4b6d87cb9a167585e1fc49914248fd.zip',
+            iam_token_path,
+            spatial_population_scenarios_path),
+        target_path_list=[spatial_population_scenarios_path],
+        task_name='fetch spatial population scenarios')
+    spatial_population_scenarios_touch_file_path = (
+        os.path.join(
+            churn_dir, POPULATION_SCENARIOS_DIR,
+            os.path.basename(spatial_population_scenarios_path) + '_unzipped'))
+    unzip_spatial_population_scenarios_task = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            spatial_population_scenarios_path, os.path.join(
+                churn_dir, POPULATION_SCENARIOS_DIR),
+            spatial_population_scenarios_touch_file_path),
+        target_path_list=[spatial_population_scenarios_touch_file_path],
+        dependent_task_list=[fetch_spatial_population_scenarios_task],
+        task_name=f'unzip spatial_population_scenarios')
 
     ag_load_scenarios_archive_path = os.path.join(
         downloads_dir, 'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip')
@@ -799,8 +850,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()
 
-    build_dem_rtree_task.join()
-
     with open(clean_biophysical_table_pickle_path, 'rb') as \
             biophysical_table_file:
         biophysical_table = dill.load(biophysical_table_file)
@@ -818,6 +867,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv')
 
+    """
     finished_watershed_geometry_touch_path = os.path.join(
         churn_dir, 'finished_watershed_geometry.touch')
     add_watershed_regions_task = task_graph.add_task(
@@ -828,7 +878,10 @@ def main(raw_iam_token_path, raw_workspace_dir):
             finished_watershed_geometry_touch_path),
         target_path_list=[finished_watershed_geometry_touch_path],
         dependent_task_list=[
-            unzip_watersheds_task, unzip_world_borders_task])
+            unzip_watersheds_task, unzip_world_borders_task],
+        task_name='processing watershed geometry')
+    """
+    task_graph.join()
 
     LOGGER.info("scheduling watershed processing")
     task_id = 0
@@ -857,6 +910,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 task_graph, database_path, database_lock, task_id, ws_prefix,
                 global_watershed_path, watershed_fid, dem_rtree_path,
                 dem_path_index_map_path,
+                gpw_total_dens_path,
                 eff_n_lucode_map,
                 load_n_lucode_map,
                 countries_regions_table_path,
@@ -865,8 +919,10 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 aligned_file_set)
             watershed_feature = None
             task_id -= 1
+            break
         watershed_layer = None
         watershed_vector = None
+        break
 
     task_graph.close()
     task_graph.join()
@@ -876,8 +932,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
 def schedule_watershed_processing(
         task_graph, database_path, database_lock, task_id, ws_prefix,
         watershed_path, watershed_fid, dem_rtree_path,
-        dem_path_index_map_path, eff_n_lucode_map, load_n_lucode_map,
-        countries_regions_table_path,
+        dem_path_index_map_path, gpw_2010_total_dens_path,
+        eff_n_lucode_map, load_n_lucode_map, countries_regions_table_path,
         root_data_dir, target_result_database_path, workspace_dir,
         aligned_file_set):
     """Process a watershed for NDR analysis.
@@ -897,6 +953,8 @@ def schedule_watershed_processing(
         dem_path_index_map_path (str): path to pickled dictionary that maps
             `dem_rtree_path` IDs to file paths of the DEM tile that matches
             that id.
+        gpw_2010_total_dens_path (str): path to global population density in
+            2010 in units of people / km&2
         eff_n_lucode_map (dict): maps lucodes to NDR efficiency values.
         load_n_lucode_map (dict): maps lucodes to NDR load values.
         countries_regions_table_path (str): path to a table that maps country
@@ -983,16 +1041,21 @@ def schedule_watershed_processing(
         [os.path.join(root_data_dir, path)
          for path in list(LANDCOVER_RASTER_PATHS.values()) +
          list(PRECIP_RASTER_PATHS.values()) +
-         list(AG_RASTER_PATHS.values())]))
-    base_raster_path_list.append(masked_watershed_dem_path)
+         list(AG_RASTER_PATHS.values()) +
+         list(POPULATION_RASTER_PATHS.values())]))
+    base_raster_path_list.extend(
+        [gpw_2010_total_dens_path, masked_watershed_dem_path])
 
+    max_basename_length = 50
     def _base_to_aligned_path_op(base_path):
         """Convert global raster path to local."""
         return os.path.join(
             ws_working_dir, '%s_%s_aligned.tif' % (
                 ws_prefix,
-                os.path.splitext(os.path.basename(base_path))[0].replace(
-                    ws_prefix, '')))
+                os.path.splitext(
+                    os.path.normpath(base_path).replace(
+                        os.sep, '_'))[0].replace(
+                    ws_prefix, '')[-max_basename_length:]))
 
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]
@@ -1027,6 +1090,8 @@ def schedule_watershed_processing(
         dependent_task_list=[mask_watershed_dem_task],
         task_name='align resize %s' % ws_prefix,
         priority=task_id)
+
+    return
 
     # fill and route dem
     filled_watershed_dem_path = os.path.join(
@@ -1197,10 +1262,8 @@ def schedule_watershed_processing(
         priority=task_id)
 
     for landcover_id, global_landcover_path in LANDCOVER_RASTER_PATHS.items():
-        local_landcover_path = os.path.join(
-            ws_working_dir, '%s_%s_aligned.tif' % (
-                ws_prefix, os.path.splitext(os.path.basename(
-                    global_landcover_path))[0]))
+        local_landcover_path = _base_to_aligned_path_op(
+            os.path.join(root_data_dir, global_landcover_path))
         eff_n_raster_path = local_landcover_path.replace(
             '.tif', '_eff_n.tif')
         reclassify_eff_n_task = task_graph.add_task(
@@ -1225,10 +1288,8 @@ def schedule_watershed_processing(
             task_name='reclasify_load_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
-        local_ag_load_path = os.path.join(
-            ws_working_dir, '%s_%s_aligned.tif' % (
-                ws_prefix, os.path.splitext(
-                    os.path.basename(AG_RASTER_PATHS[landcover_id]))[0]))
+        local_ag_load_path = _base_to_aligned_path_op(
+            os.path.join(root_data_dir, AG_RASTER_PATHS[landcover_id]))
 
         ag_load_path = local_landcover_path.replace(
             '.tif', '_ag_load_n.tif')
@@ -1245,10 +1306,8 @@ def schedule_watershed_processing(
         # calculate modified load (load * precip)
         modified_load_raster_path = local_landcover_path.replace(
             '.tif', '_%s_modified_load.tif' % landcover_id)
-        local_precip_path = os.path.join(
-            ws_working_dir, '%s_%s_aligned.tif' % (
-                ws_prefix, os.path.splitext(
-                    os.path.basename(PRECIP_RASTER_PATHS[landcover_id]))[0]))
+        local_precip_path = _base_to_aligned_path_op(
+            os.path.join(root_data_dir, PRECIP_RASTER_PATHS[landcover_id]))
         modified_load_task = task_graph.add_task(
             func=mult_arrays,
             args=(
@@ -1579,6 +1638,9 @@ def add_watershed_geometry_and_regions(
         database_path, database_lock, tm_world_borders_path,
         regions_table_path, watershed_path_list, finished_touch_file):
     """Add watershed geometry, country, and region to database table."""
+    if os.path.exists(database_path):
+        return
+
     LOGGER.info("build country spatial index")
     country_rtree, country_geom_list = build_spatial_index(
         tm_world_borders_path)
@@ -1647,3 +1709,35 @@ def add_watershed_geometry_and_regions(
     with open(finished_touch_file, 'w') as finished_file:
         finished_file.write('all done!')
 
+
+def add_rasters(base_raster_path_list, target_raster_path):
+    """Add rasters in `base_raster_path_list` and ignore nodata.
+
+    Parameters:
+        base_raster_path_list (str): path to rasters of the same size.
+        target_raster_path_list (str): path to target raster that will be the
+            sum of base.
+
+    Returns:
+        None.
+
+    """
+    nodata_list = [
+        pygeoprocessing.get_raster_info(x)['nodata'][0]
+        for x in base_raster_path_list]
+
+    target_nodata = -1
+
+    def _add_array_list(*array_list):
+        result = numpy.zeros(array_list[0].shape)
+        target_valid_mask = numpy.zeros(result.shape, dtype=numpy.bool)
+        for array_index, array in enumerate(array_list):
+            valid_mask = array != nodata_list[array_index]
+            target_valid_mask |= valid_mask
+            result[valid_mask] += array[valid_mask]
+        result[~target_valid_mask] = target_nodata
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [(x, 1) for x in base_raster_path_list], _add_array_list,
+        target_raster_path, gdal.GDT_Float32, target_nodata)

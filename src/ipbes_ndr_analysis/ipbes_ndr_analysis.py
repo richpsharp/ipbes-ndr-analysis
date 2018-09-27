@@ -300,7 +300,8 @@ def calculate_ag_load(
 
 
 def aggregate_to_database(
-        n_export_raster_path, n_modified_load_raster_path, ws_prefix,
+        n_export_raster_path, n_modified_load_raster_path,
+        rural_pop_raster_path, ws_prefix,
         scenario_key, database_lock, target_database_path, target_touch_path):
     """Aggregate nutrient export and load and save to database.
 
@@ -312,6 +313,8 @@ def aggregate_to_database(
             units of kg/pixel/yr. Values outside the watershed will be nodata.
         n_modified_load_raster_path (string): path to nutrient load raster in
             units of kg/pixel/yr. Values outside the watershed will be nodata.
+        rural_pop_raster_path (string): path to rural population of units
+            count / pixel. Values outside the watershed will be nodata.
         ws_prefix (string): watershed ID used to uniquely identify the
             watershed.
         scenario_key (string): used to insert in database (values like 2015
@@ -340,15 +343,27 @@ def aggregate_to_database(
         n_modified_load_sum += numpy.sum(
             data_block[~numpy.isclose(data_block, n_modified_load_nodata)])
 
+    if rural_pop_raster_path:
+        rural_pop_count = 0.0
+        rural_nodata = pygeoprocessing.get_raster_info(
+            rural_pop_raster_path)['nodata'][0]
+        for _, data_block in pygeoprocessing.iterblocks(
+                rural_pop_raster_path):
+            rural_pop_count += numpy.sum(data_block[
+                ~numpy.isclose(data_block, rural_nodata)])
+    else:
+        rural_pop_count = -1
+
     with database_lock:
         conn = sqlite3.connect(target_database_path)
         if conn is not None:
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    """INSERT INTO nutrient_export VALUES (?, ?, ?, ?)""", (
+                    """INSERT OR REPLACE INTO nutrient_export VALUES
+                       (?, ?, ?, ?, ?)""", (
                         ws_prefix, scenario_key, n_export_sum,
-                        n_modified_load_sum))
+                        n_modified_load_sum, rural_pop_count))
             except:
                 LOGGER.exception('"%s %s"', n_export_sum, n_modified_load_sum)
             conn.commit()
@@ -822,6 +837,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
             scenario_key TEXT NOT NULL,
             nutrient_export REAL NOT NULL,
             modified_load REAL NOT NULL,
+            rural_pop_count REAL NOT NULL,
             PRIMARY KEY (ws_prefix_key, scenario_key)
         );
         CREATE UNIQUE INDEX IF NOT EXISTS ws_scenario_index
@@ -1008,7 +1024,7 @@ def schedule_watershed_processing(
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
     utm_pixel_size = 90.0
-    pixel_area_in_km2 = utm_pixel_size ** 2 / 1e3**2
+    pixel_area_in_km2 = utm_pixel_size ** 2 / 1.e3**2
 
     watershed_geometry = None
     watershed_layer = None
@@ -1058,7 +1074,7 @@ def schedule_watershed_processing(
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]
     aligned_dem_path = aligned_path_list[-1]
-    gpw_2010_den_path = base_raster_path_list[-2]
+    gpw_2010_den_path = aligned_path_list[-2]
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
@@ -1089,8 +1105,6 @@ def schedule_watershed_processing(
         dependent_task_list=[mask_watershed_dem_task],
         task_name='align resize %s' % ws_prefix,
         priority=task_id)
-
-    return
 
     # fill and route dem
     filled_watershed_dem_path = os.path.join(
@@ -1268,7 +1282,6 @@ def schedule_watershed_processing(
         LOGGER.info('%s %s', landcover_id, cur_or_fut_scenario)
         if cur_or_fut_scenario:
             scenario_id = cur_or_fut_scenario[0]
-            gpw_2010_den_path
             spatial_pop_2010_tot = _base_to_aligned_path_op(
                 os.path.join(
                     root_data_dir, POPULATION_RASTER_PATHS['2015_tot']))
@@ -1386,7 +1399,8 @@ def schedule_watershed_processing(
         aggregate_result_task = task_graph.add_task(
             func=aggregate_to_database,
             args=(
-                n_export_raster_path, modified_load_raster_path, ws_prefix,
+                n_export_raster_path, modified_load_raster_path,
+                rural_scenario_pop_path, ws_prefix,
                 landcover_id, database_lock, database_path,
                 target_touch_path),
             dependent_task_list=[
@@ -1798,21 +1812,25 @@ def calculate_rural_pop(
     target_pop_nodata = -1
 
     def _calc_rural_pop(
-            pixel_area_in_km2, gpw_2010_den_array, spatial_pop_scenario_array,
+            pixel_area_in_km2, gpw_2010_den_array,
+            spatial_rur_pop_scenario_array,
             spatial_pop_2010_array):
         result = numpy.empty_like(gpw_2010_den_array, dtype=numpy.float32)
         result[:] = target_pop_nodata
         valid_mask = (
             (gpw_2010_den_array != gpw_2010_den_nodata) &
-            (spatial_pop_scenario_array != spatial_pop_scenario_rur_nodata) &
+            (spatial_rur_pop_scenario_array != spatial_pop_scenario_rur_nodata) &
             (spatial_pop_2010_array != spatial_pop_2010_tot_nodata))
-        result[valid_mask] = (
-            pixel_area_in_km2 * gpw_2010_den_array[valid_mask] *
-            spatial_pop_scenario_array[valid_mask] *
-            spatial_pop_2010_array[valid_mask])
+        zero_mask = spatial_pop_2010_array == 0.0
+        result[valid_mask & ~zero_mask] = (
+            pixel_area_in_km2 * gpw_2010_den_array[valid_mask & ~zero_mask] *
+            spatial_rur_pop_scenario_array[valid_mask & ~zero_mask] /
+            spatial_pop_2010_array[valid_mask & ~zero_mask])
+        result[zero_mask] = 0.0
         return result
 
     pygeoprocessing.raster_calculator(
-        [(gpw_2010_den_path, 1), (spatial_pop_scenario_rur_path, 1),
-         (spatial_pop_2010_tot_path, 1)], _calc_rural_pop,
-        target_rural_scenario_pop_path, gdal.GDT_Float32, target_pop_nodata)
+        [(pixel_area_in_km2, 'raw'), (gpw_2010_den_path, 1),
+         (spatial_pop_scenario_rur_path, 1), (spatial_pop_2010_tot_path, 1)],
+        _calc_rural_pop, target_rural_scenario_pop_path, gdal.GDT_Float32,
+        target_pop_nodata)

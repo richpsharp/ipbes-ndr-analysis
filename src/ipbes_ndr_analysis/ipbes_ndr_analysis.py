@@ -46,7 +46,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS = -1# max(1, multiprocessing.cpu_count())
+N_CPUS = max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 TASKGRAPH_DELAYED_START = False
 NODATA = -1
@@ -932,10 +932,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 aligned_file_set)
             watershed_feature = None
             task_id -= 1
-            break
         watershed_layer = None
         watershed_vector = None
-        break
 
     task_graph.close()
     task_graph.join()
@@ -1061,6 +1059,7 @@ def schedule_watershed_processing(
         [gpw_2010_total_dens_path, masked_watershed_dem_path])
 
     max_basename_length = 50
+
     def _base_to_aligned_path_op(base_path):
         """Convert global raster path to local."""
         return os.path.join(
@@ -1074,7 +1073,7 @@ def schedule_watershed_processing(
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]
     aligned_dem_path = aligned_path_list[-1]
-    gpw_2010_den_path = aligned_path_list[-2]
+    gpw_2010_den_aligned_path = aligned_path_list[-2]
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
@@ -1105,6 +1104,18 @@ def schedule_watershed_processing(
         dependent_task_list=[mask_watershed_dem_task],
         task_name='align resize %s' % ws_prefix,
         priority=task_id)
+
+    masked_gpw_2010_den_path = _base_to_aligned_path_op(
+        os.path.join(workspace_dir, 'masked_gpw_2010_den.tif'))
+    mask_gpw_2010_task = task_graph.add_task(
+        func=mask_raster_by_vector,
+        args=(
+            gpw_2010_den_aligned_path, local_watershed_path,
+            masked_gpw_2010_den_path),
+        target_path_list=[masked_gpw_2010_den_path],
+        dependent_task_list=[
+            reproject_watershed_task, align_resize_task],
+        task_name='mask gpw %s' % ws_prefix)
 
     # fill and route dem
     filled_watershed_dem_path = os.path.join(
@@ -1292,12 +1303,18 @@ def schedule_watershed_processing(
             rural_scenario_pop_path = _base_to_aligned_path_op(
                 os.path.join(
                     root_data_dir, f'{scenario_id}_rural_total_pop.tif'))
-            calculate_rural_pop(
-                pixel_area_in_km2, gpw_2010_den_path,
-                spatial_pop_scenario_rur, spatial_pop_2010_tot,
-                rural_scenario_pop_path)
+            rural_pop_task = task_graph.add_task(
+                func=calculate_rural_pop,
+                args=(
+                    pixel_area_in_km2, masked_gpw_2010_den_path,
+                    spatial_pop_scenario_rur, spatial_pop_2010_tot,
+                    rural_scenario_pop_path),
+                target_path_list=[rural_scenario_pop_path],
+                dependent_task_list=[align_resize_task, mask_gpw_2010_task],
+                task_name='calculate rural pop')
         else:
             rural_scenario_pop_path = None
+            rural_pop_task = None
 
         local_landcover_path = _base_to_aligned_path_op(
             os.path.join(root_data_dir, global_landcover_path))
@@ -1404,7 +1421,8 @@ def schedule_watershed_processing(
                 landcover_id, database_lock, database_path,
                 target_touch_path),
             dependent_task_list=[
-                n_export_task, modified_load_task, reproject_watershed_task],
+                n_export_task, modified_load_task, reproject_watershed_task] +
+                [rural_pop_task] if rural_pop_task else [],
             task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
@@ -1818,15 +1836,15 @@ def calculate_rural_pop(
         result = numpy.empty_like(gpw_2010_den_array, dtype=numpy.float32)
         result[:] = target_pop_nodata
         valid_mask = (
-            (gpw_2010_den_array != gpw_2010_den_nodata) &
-            (spatial_rur_pop_scenario_array != spatial_pop_scenario_rur_nodata) &
-            (spatial_pop_2010_array != spatial_pop_2010_tot_nodata))
+            ~numpy.isclose(gpw_2010_den_array, gpw_2010_den_nodata) &
+            ~numpy.isclose(spatial_rur_pop_scenario_array, spatial_pop_scenario_rur_nodata) &
+            ~numpy.isclose(spatial_pop_2010_array, spatial_pop_2010_tot_nodata))
         zero_mask = spatial_pop_2010_array == 0.0
         result[valid_mask & ~zero_mask] = (
             pixel_area_in_km2 * gpw_2010_den_array[valid_mask & ~zero_mask] *
             spatial_rur_pop_scenario_array[valid_mask & ~zero_mask] /
             spatial_pop_2010_array[valid_mask & ~zero_mask])
-        result[zero_mask] = 0.0
+        result[valid_mask & zero_mask] = 0.0
         return result
 
     pygeoprocessing.raster_calculator(

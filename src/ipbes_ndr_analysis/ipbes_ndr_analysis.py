@@ -614,6 +614,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         func=add_rasters,
         args=(gpw_intermediate_path_list, gpw_total_dens_path),
         target_path_list=[gpw_total_dens_path],
+        dependent_task_list=gpw_intermediate_path_list,
         task_name=f'add gpw totals',
         priority=100)
 
@@ -882,21 +883,14 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     finished_watershed_geometry_touch_path = os.path.join(
         churn_dir, 'finished_watershed_geometry.touch')
-    add_watershed_regions_task = task_graph.add_task(
-        func=add_watershed_geometry_and_regions,
-        args=(
-            database_path, database_lock, tm_world_borders_path,
-            regions_table_path, global_watershed_path_list,
-            finished_watershed_geometry_touch_path),
-        target_path_list=[finished_watershed_geometry_touch_path],
-        dependent_task_list=[
-            unzip_watersheds_task, unzip_world_borders_task],
-        task_name='processing watershed geometry')
 
     LOGGER.info("scheduling watershed processing")
     task_id = 0
     scheduled_watershed_prefixes = set()
     aligned_file_set = set()
+
+    task_graph.join()
+
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
@@ -931,6 +925,18 @@ def main(raw_iam_token_path, raw_workspace_dir):
             task_id -= 1
         watershed_layer = None
         watershed_vector = None
+
+    add_watershed_regions_task = task_graph.add_task(
+        func=add_watershed_geometry_and_regions,
+        args=(
+            database_path, database_lock, tm_world_borders_path,
+            regions_table_path, global_watershed_path_list,
+            finished_watershed_geometry_touch_path),
+        target_path_list=[finished_watershed_geometry_touch_path],
+        dependent_task_list=[
+            unzip_watersheds_task, unzip_world_borders_task],
+        task_name='processing watershed geometry')
+
 
     task_graph.close()
     task_graph.join()

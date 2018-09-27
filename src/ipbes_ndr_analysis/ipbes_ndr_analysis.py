@@ -57,7 +57,7 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -598,6 +598,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     }
 
     gpw_intermediate_path_list = []
+    gpw_task_fetch_list = []
     for gpw_id, (gpw_bucket, gpw_blob_id) in gpw_buckets.items():
         gpw_dens_path = os.path.join(
             gpw_2010_dir, os.path.basename(gpw_blob_id))
@@ -608,13 +609,14 @@ def main(raw_iam_token_path, raw_workspace_dir):
             task_name=f"""fetch {os.path.basename(gpw_dens_path)}""",
             priority=100)
         gpw_intermediate_path_list.append(gpw_dens_path)
+        gpw_task_fetch_list.append(gpw_fetch_task)
 
     gpw_total_dens_path = os.path.join(churn_dir, 'gpw_2010_total_dens.tif')
     add_gpw_task = task_graph.add_task(
         func=add_rasters,
         args=(gpw_intermediate_path_list, gpw_total_dens_path),
         target_path_list=[gpw_total_dens_path],
-        dependent_task_list=gpw_intermediate_path_list,
+        dependent_task_list=gpw_task_fetch_list,
         task_name=f'add gpw totals',
         priority=100)
 

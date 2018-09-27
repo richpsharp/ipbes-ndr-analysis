@@ -1422,7 +1422,7 @@ def schedule_watershed_processing(
                 target_touch_path),
             dependent_task_list=[
                 n_export_task, modified_load_task, reproject_watershed_task] +
-                [rural_pop_task] if rural_pop_task else [],
+                ([rural_pop_task] if rural_pop_task else []),
             task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 

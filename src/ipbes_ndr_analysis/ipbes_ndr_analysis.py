@@ -880,7 +880,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv')
 
-    """
     finished_watershed_geometry_touch_path = os.path.join(
         churn_dir, 'finished_watershed_geometry.touch')
     add_watershed_regions_task = task_graph.add_task(
@@ -893,8 +892,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
-    """
-    task_graph.join()
 
     LOGGER.info("scheduling watershed processing")
     task_id = 0

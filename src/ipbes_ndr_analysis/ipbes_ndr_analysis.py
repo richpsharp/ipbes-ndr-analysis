@@ -57,7 +57,7 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -125,12 +125,9 @@ POPULATION_SCENARIOS_DIR = 'spatial_population_scenarios'
 POPULATION_RASTER_PATHS = {
     '2015_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/rural/GeoTIFF/ssp1rur2010.tif',
     '2015_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/total/GeoTIFF/ssp1_2010.tif',
-    '2050ssp1_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/rural/GeoTIFF/ssp1rur2050.tif',
-    '2050ssp1_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/total/GeoTIFF/ssp1_2050.tif',
-    '2050ssp3_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP3_GeoTIFF/rural/GeoTIFF/ssp3rur2050.tif',
-    '2050ssp3_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP3_GeoTIFF/total/GeoTIFF/ssp3_2050.tif',
-    '2050ssp5_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP5_GeoTIFF/rural/GeoTIFF/ssp5rur2050.tif',
-    '2050ssp5_tot': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP5_GeoTIFF/total/GeoTIFF/ssp5_2050.tif',
+    'ssp1_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP1_GeoTIFF/rural/GeoTIFF/ssp1rur2050.tif',
+    'ssp3_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP3_GeoTIFF/rural/GeoTIFF/ssp3rur2050.tif',
+    'ssp5_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP5_GeoTIFF/rural/GeoTIFF/ssp5rur2050.tif',
 }
 
 def db_to_shapefile(database_path, target_vector_path):
@@ -1011,6 +1008,7 @@ def schedule_watershed_processing(
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
     utm_pixel_size = 90.0
+    pixel_area_in_km2 = utm_pixel_size ** 2 / 1e3**2
 
     watershed_geometry = None
     watershed_layer = None
@@ -1060,6 +1058,7 @@ def schedule_watershed_processing(
     aligned_path_list = [
         _base_to_aligned_path_op(path) for path in base_raster_path_list]
     aligned_dem_path = aligned_path_list[-1]
+    gpw_2010_den_path = base_raster_path_list[-2]
 
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
@@ -1262,6 +1261,31 @@ def schedule_watershed_processing(
         priority=task_id)
 
     for landcover_id, global_landcover_path in LANDCOVER_RASTER_PATHS.items():
+        # calculate rural population
+        cur_or_fut_scenario = [
+            scenario for scenario in ('2015', 'ssp1', 'ssp3', 'ssp5')
+            if scenario in landcover_id]
+        LOGGER.info('%s %s', landcover_id, cur_or_fut_scenario)
+        if cur_or_fut_scenario:
+            scenario_id = cur_or_fut_scenario[0]
+            gpw_2010_den_path
+            spatial_pop_2010_tot = _base_to_aligned_path_op(
+                os.path.join(
+                    root_data_dir, POPULATION_RASTER_PATHS['2015_tot']))
+            spatial_pop_scenario_rur = _base_to_aligned_path_op(
+                os.path.join(
+                    root_data_dir,
+                    POPULATION_RASTER_PATHS[f'{scenario_id}_rur']))
+            rural_scenario_pop_path = _base_to_aligned_path_op(
+                os.path.join(
+                    root_data_dir, f'{scenario_id}_rural_total_pop.tif'))
+            calculate_rural_pop(
+                pixel_area_in_km2, gpw_2010_den_path,
+                spatial_pop_scenario_rur, spatial_pop_2010_tot,
+                rural_scenario_pop_path)
+        else:
+            rural_scenario_pop_path = None
+
         local_landcover_path = _base_to_aligned_path_op(
             os.path.join(root_data_dir, global_landcover_path))
         eff_n_raster_path = local_landcover_path.replace(
@@ -1741,3 +1765,54 @@ def add_rasters(base_raster_path_list, target_raster_path):
     pygeoprocessing.raster_calculator(
         [(x, 1) for x in base_raster_path_list], _add_array_list,
         target_raster_path, gdal.GDT_Float32, target_nodata)
+
+
+def calculate_rural_pop(
+        pixel_area_in_km2, gpw_2010_den_path, spatial_pop_scenario_rur_path,
+        spatial_pop_2010_tot_path, target_rural_scenario_pop_path):
+    """Calculate rural total pop from scenario ratios.
+
+    pixel_area_in_km2 * gpw_2010_tot * 20X0_sspN_rur / 2010_sspN_tot
+
+    Parameters:
+        pixel_area_in_km2 (float): area of the raster pixels in km^2 to
+            convert density to count.
+        gpw_2010_den_path (str): path to base GPW 2010 rural density
+        spatial_pop_scenario_rur_path (str): path to raster for rural density
+            for scenario.
+        spatial_pop_2010_tot_path (str): path to raster for total density in
+            spatial scenarios for 2010.
+        target_rural_scenario_pop_path (str): path to target raster that will
+            have population / pixel.
+
+    Returns:
+        None.
+
+    """
+    gpw_2010_den_nodata = pygeoprocessing.get_raster_info(
+        gpw_2010_den_path)['nodata'][0]
+    spatial_pop_scenario_rur_nodata = pygeoprocessing.get_raster_info(
+        spatial_pop_scenario_rur_path)['nodata'][0]
+    spatial_pop_2010_tot_nodata = pygeoprocessing.get_raster_info(
+        spatial_pop_2010_tot_path)['nodata'][0]
+    target_pop_nodata = -1
+
+    def _calc_rural_pop(
+            pixel_area_in_km2, gpw_2010_den_array, spatial_pop_scenario_array,
+            spatial_pop_2010_array):
+        result = numpy.empty_like(gpw_2010_den_array, dtype=numpy.float32)
+        result[:] = target_pop_nodata
+        valid_mask = (
+            (gpw_2010_den_array != gpw_2010_den_nodata) &
+            (spatial_pop_scenario_array != spatial_pop_scenario_rur_nodata) &
+            (spatial_pop_2010_array != spatial_pop_2010_tot_nodata))
+        result[valid_mask] = (
+            pixel_area_in_km2 * gpw_2010_den_array[valid_mask] *
+            spatial_pop_scenario_array[valid_mask] *
+            spatial_pop_2010_array[valid_mask])
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [(gpw_2010_den_path, 1), (spatial_pop_scenario_rur_path, 1),
+         (spatial_pop_2010_tot_path, 1)], _calc_rural_pop,
+        target_rural_scenario_pop_path, gdal.GDT_Float32, target_pop_nodata)

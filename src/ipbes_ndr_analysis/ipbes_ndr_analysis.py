@@ -57,7 +57,7 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),

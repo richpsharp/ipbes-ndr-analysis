@@ -944,12 +944,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 aligned_file_set)
             watershed_feature = None
             task_id -= 1
-            break
         watershed_layer = None
         watershed_vector = None
-        break
 
-    """
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,
         func=add_watershed_geometry_and_regions,
@@ -961,7 +958,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
-    """
     task_graph.close()
     task_graph.join()
     LOGGER.info("all done :)")
@@ -1748,7 +1744,7 @@ def add_watershed_geometry_and_regions(
         database_path, database_lock, tm_world_borders_path,
         regions_table_path, watershed_path_list, finished_touch_file):
     """Add watershed geometry, country, and region to database table."""
-    if os.path.exists(database_path):
+    if os.path.exists(database_path) and os.path.exists(finished_touch_file):
         return
 
     LOGGER.info("build country spatial index")

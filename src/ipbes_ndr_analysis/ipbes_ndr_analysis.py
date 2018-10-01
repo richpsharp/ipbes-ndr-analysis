@@ -886,15 +886,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()
 
-    with open(clean_biophysical_table_pickle_path, 'rb') as \
-            biophysical_table_file:
-        biophysical_table = dill.load(biophysical_table_file)
-
-    eff_n_lucode_map = dict(
-        zip(biophysical_table['ID'], biophysical_table['eff_n']))
-    load_n_lucode_map = dict(
-        zip(biophysical_table['ID'], biophysical_table['load_n']))
-
     tm_world_borders_path = os.path.join(
         churn_dir, 'TM_WORLD_BORDERS-0.3.shp')
     global_watershed_path_list = glob.glob(
@@ -912,6 +903,17 @@ def main(raw_iam_token_path, raw_workspace_dir):
     aligned_file_set = set()
 
     task_graph.join()
+
+    with open(clean_biophysical_table_pickle_path, 'rb') as \
+            biophysical_table_file:
+        biophysical_table = dill.load(biophysical_table_file)
+
+    eff_n_lucode_map = dict(
+        zip(biophysical_table['ID'], biophysical_table['eff_n']))
+    load_n_lucode_map = dict(
+        zip(biophysical_table['ID'], biophysical_table['load_n']))
+
+
 
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(

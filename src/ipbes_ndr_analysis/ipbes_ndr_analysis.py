@@ -48,7 +48,6 @@ gdal.UseExceptions()
 
 N_CPUS = max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
-TASKGRAPH_DELAYED_START = False
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
@@ -568,7 +567,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     task_graph = taskgraph.TaskGraph(
         os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
-        TASKGRAPH_REPORTING_FREQUENCY, TASKGRAPH_DELAYED_START)
+        TASKGRAPH_REPORTING_FREQUENCY)
 
     gpw_buckets = {
         'gpw_v4_e_a000_014ft_2010_dens': (
@@ -603,6 +602,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         gpw_dens_path = os.path.join(
             gpw_2010_dir, os.path.basename(gpw_blob_id))
         gpw_fetch_task = task_graph.add_task(
+            n_retries=5,
             func=reproduce.utils.google_bucket_fetch_and_validate,
             args=(gpw_bucket, gpw_blob_id, iam_token_path, gpw_dens_path),
             target_path_list=[gpw_dens_path],
@@ -613,6 +613,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     gpw_total_dens_path = os.path.join(churn_dir, 'gpw_2010_total_dens.tif')
     add_gpw_task = task_graph.add_task(
+        n_retries=5,
         func=add_rasters,
         args=(gpw_intermediate_path_list, gpw_total_dens_path),
         target_path_list=[gpw_total_dens_path],
@@ -625,6 +626,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         'md5_1c4b6d87cb9a167585e1fc49914248fd.zip')
 
     fetch_spatial_population_scenarios_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ecoshard-root',
@@ -638,6 +640,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
             churn_dir, POPULATION_SCENARIOS_DIR,
             os.path.basename(spatial_population_scenarios_path) + '_unzipped'))
     unzip_spatial_population_scenarios_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             spatial_population_scenarios_path, os.path.join(
@@ -650,6 +653,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     ag_load_scenarios_archive_path = os.path.join(
         downloads_dir, 'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip')
     fetch_ag_load_scenarios_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
@@ -662,6 +666,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         os.path.join(
             churn_dir, os.path.basename(ag_load_scenarios_archive_path) + '_unzipped'))
     unzip_ag_load_scenarios_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             ag_load_scenarios_archive_path, churn_dir,
@@ -673,6 +678,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     precip_scenarios_archive_path = os.path.join(
         downloads_dir, 'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip')
     fetch_precip_scenarios_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
@@ -687,6 +693,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     precip_scenarios_dir_path = os.path.join(
         churn_dir, PRECIP_DIR)
     unzip_precip_scenarios_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             precip_scenarios_archive_path, precip_scenarios_dir_path,
@@ -699,6 +706,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip')
     fetch_globio_landuse_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
@@ -713,6 +721,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     globio_landuse_dir_path = os.path.join(
         churn_dir, LANDUSE_DIR)
     unzip_globio_landuse_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             globio_landuse_archive_path, globio_landuse_dir_path,
@@ -725,6 +734,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip')
     fetch_watersheds_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data', 'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
@@ -734,6 +744,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     watersheds_touch_file_path = os.path.join(
         churn_dir, os.path.basename(watersheds_archive_path) + '_unzipped')
     unzip_watersheds_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             watersheds_archive_path, churn_dir,
@@ -748,6 +759,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     biophysical_table_path = os.path.join(
         downloads_dir, 'NDR_representative_table_md5_488c9843694843ef53d647f25f230fd6.csv')
     download_biophysical_table_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
@@ -758,6 +770,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     clean_biophysical_table_pickle_path = os.path.join(
         churn_dir, 'biophysical.pickle')
     clean_biophysical_task = task_graph.add_task(
+        n_retries=5,
         func=clean_and_pickle_biophysical_table,
         args=(biophysical_table_path, clean_biophysical_table_pickle_path),
         target_path_list=[clean_biophysical_table_pickle_path],
@@ -767,6 +780,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv')
     download_countries_regions_table_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
@@ -779,6 +793,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'TM_WORLD_BORDERS_SIMPL-0.3_md5_15057f7b17752048f9bd2e2e607fe99c.zip')
     download_tm_world_borders_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ecoshard-root',
@@ -789,6 +804,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     world_borders_file_path = os.path.join(
         churn_dir, os.path.basename(tm_world_borders_archive_path) + '_unzipped')
     unzip_world_borders_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             tm_world_borders_archive_path, churn_dir,
@@ -800,6 +816,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     global_dem_archive_path = os.path.join(
         downloads_dir, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
     global_dem_download_task = task_graph.add_task(
+        n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
@@ -810,6 +827,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     dem_touch_file_path = os.path.join(
         churn_dir, os.path.basename(global_dem_archive_path) + '_unzipped')
     unzip_dem_task = task_graph.add_task(
+        n_retries=5,
         func=unzip_file,
         args=(
             global_dem_archive_path, churn_dir,
@@ -823,6 +841,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     dem_path_index_map_path = os.path.join(
         churn_dir, 'dem_rtree_path_index_map.dat')
     build_dem_rtree_task = task_graph.add_task(
+        n_retries=5,
         func=build_raster_rtree,
         args=(dem_path_dir, dem_path_index_map_path, dem_rtree_path),
         target_path_list=[
@@ -929,6 +948,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         watershed_vector = None
 
     add_watershed_regions_task = task_graph.add_task(
+        n_retries=5,
         func=add_watershed_geometry_and_regions,
         args=(
             database_path, database_lock, tm_world_borders_path,
@@ -1009,6 +1029,7 @@ def schedule_watershed_processing(
         watershed_geometry.GetEnvelope()[i] for i in [0, 2, 1, 3]]
 
     merge_watershed_dems_task = task_graph.add_task(
+        n_retries=5,
         func=merge_watershed_dems,
         args=(
             watershed_bb, watershed_fid, dem_rtree_path,
@@ -1036,6 +1057,7 @@ def schedule_watershed_processing(
     local_watershed_path = os.path.join(ws_working_dir, '%s.gpkg' % ws_prefix)
 
     reproject_watershed_task = task_graph.add_task(
+        n_retries=5,
         func=reproject_geometry_to_target,
         args=(
             watershed_path, watershed_fid, epsg_srs.ExportToWkt(),
@@ -1045,6 +1067,7 @@ def schedule_watershed_processing(
         priority=task_id)
 
     mask_watershed_dem_task = task_graph.add_task(
+        n_retries=5,
         func=mask_raster_by_vector,
         args=(
             watershed_dem_path, local_watershed_path,
@@ -1094,6 +1117,7 @@ def schedule_watershed_processing(
             "%s files might be duplicately processed", aligned_path_list)
     aligned_file_set.update(aligned_path_list)
     align_resize_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.align_and_resize_raster_stack,
         args=(
             base_raster_path_list, aligned_path_list,
@@ -1113,6 +1137,7 @@ def schedule_watershed_processing(
     masked_gpw_2010_den_path = _base_to_aligned_path_op(
         os.path.join(workspace_dir, 'masked_gpw_2010_den.tif'))
     mask_gpw_2010_task = task_graph.add_task(
+        n_retries=5,
         func=mask_raster_by_vector,
         args=(
             gpw_2010_den_aligned_path, local_watershed_path,
@@ -1129,6 +1154,7 @@ def schedule_watershed_processing(
         ws_working_dir, '%s_flow_dir.tif' % ws_prefix)
 
     fill_pits_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.routing.fill_pits,
         args=(
             (aligned_dem_path, 1),
@@ -1141,6 +1167,7 @@ def schedule_watershed_processing(
         priority=task_id)
 
     flow_dir_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.routing.flow_dir_d8,
         args=(
             (filled_watershed_dem_path, 1),
@@ -1156,6 +1183,7 @@ def schedule_watershed_processing(
     flow_accum_path = os.path.join(
         ws_working_dir, '%s_flow_accum.tif' % ws_prefix)
     flow_accum_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.routing.flow_accumulation_d8,
         args=(
             (flow_dir_path, 1), flow_accum_path),
@@ -1168,6 +1196,7 @@ def schedule_watershed_processing(
     slope_raster_path = os.path.join(
         ws_working_dir, '%s_slope.tif' % ws_prefix)
     calculate_slope_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.calculate_slope,
         args=((filled_watershed_dem_path, 1), slope_raster_path),
         target_path_list=[slope_raster_path],
@@ -1178,6 +1207,7 @@ def schedule_watershed_processing(
     clamp_slope_raster_path = os.path.join(
         ws_working_dir, '%s_clamp_slope.tif' % ws_prefix)
     clamp_slope_task = task_graph.add_task(
+        n_retries=5,
         func=ClampOp(
             (slope_raster_path, 1), 0.005, clamp_slope_raster_path),
         target_path_list=[clamp_slope_raster_path],
@@ -1189,6 +1219,7 @@ def schedule_watershed_processing(
     slope_accum_watershed_dem_path = os.path.join(
         ws_working_dir, '%s_s_accum.tif' % ws_prefix)
     slope_accumulation_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.routing.flow_accumulation_d8,
         args=(
             (flow_dir_path, 1), slope_accum_watershed_dem_path),
@@ -1201,6 +1232,7 @@ def schedule_watershed_processing(
 
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
     d_up_task = task_graph.add_task(
+        n_retries=5,
         func=DUpOp(
             utm_pixel_size**2, slope_accum_watershed_dem_path,
             flow_accum_path, d_up_raster_path),
@@ -1212,6 +1244,7 @@ def schedule_watershed_processing(
     # calculate the flow channels
     channel_path = os.path.join(ws_working_dir, '%s_channel.tif' % ws_prefix)
     threshold_flow_task = task_graph.add_task(
+        n_retries=5,
         func=threshold_flow_accumulation,
         args=(
             flow_accum_path, FLOW_THRESHOLD, channel_path),
@@ -1224,6 +1257,7 @@ def schedule_watershed_processing(
     pixel_flow_length_raster_path = os.path.join(
         ws_working_dir, '%s_pixel_flow_length.tif' % ws_prefix)
     downstream_flow_length_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.routing.distance_to_channel_d8,
         args=(
             (flow_dir_path, 1), (channel_path, 1),
@@ -1238,6 +1272,7 @@ def schedule_watershed_processing(
     downstream_flow_distance_path = os.path.join(
         ws_working_dir, '%s_m_flow_length.tif' % ws_prefix)
     downstream_flow_distance_task = task_graph.add_task(
+        n_retries=5,
         func=MultByScalar(
             (pixel_flow_length_raster_path, 1), utm_pixel_size, NODATA,
             downstream_flow_distance_path),
@@ -1250,6 +1285,7 @@ def schedule_watershed_processing(
     d_dn_per_pixel_path = os.path.join(
         ws_working_dir, '%s_d_dn_per_pixel.tif' % ws_prefix)
     d_dn_per_pixel_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.raster_calculator,
         args=(
             [(downstream_flow_distance_path, 1),
@@ -1265,6 +1301,7 @@ def schedule_watershed_processing(
     d_dn_raster_path = os.path.join(
         ws_working_dir, '%s_d_dn.tif' % ws_prefix)
     d_dn_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.routing.distance_to_channel_d8,
         args=(
             (flow_dir_path, 1), (channel_path, 1), d_dn_raster_path),
@@ -1281,6 +1318,7 @@ def schedule_watershed_processing(
     # calculate IC
     ic_path = os.path.join(ws_working_dir, '%s_ic.tif' % ws_prefix)
     ic_task = task_graph.add_task(
+        n_retries=5,
         func=pygeoprocessing.raster_calculator,
         args=(
             [(d_up_raster_path, 1), (d_dn_raster_path, 1)],
@@ -1309,6 +1347,7 @@ def schedule_watershed_processing(
                 os.path.join(
                     root_data_dir, f'{scenario_id}_rural_total_pop.tif'))
             rural_pop_task = task_graph.add_task(
+                n_retries=5,
                 func=calculate_rural_pop,
                 args=(
                     pixel_area_in_km2, masked_gpw_2010_den_path,
@@ -1326,6 +1365,7 @@ def schedule_watershed_processing(
         eff_n_raster_path = local_landcover_path.replace(
             '.tif', '_eff_n.tif')
         reclassify_eff_n_task = task_graph.add_task(
+            n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
                 (local_landcover_path, 1), eff_n_lucode_map,
@@ -1338,6 +1378,7 @@ def schedule_watershed_processing(
         load_n_raster_path = local_landcover_path.replace(
             '.tif', '_load_n.tif')
         reclassify_load_n_task = task_graph.add_task(
+            n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
                 (local_landcover_path, 1), load_n_lucode_map,
@@ -1353,6 +1394,7 @@ def schedule_watershed_processing(
         ag_load_path = local_landcover_path.replace(
             '.tif', '_ag_load_n.tif')
         scenario_load_task = task_graph.add_task(
+            n_retries=5,
             func=calculate_ag_load,
             args=(
                 load_n_raster_path, local_ag_load_path, ag_load_path),
@@ -1368,6 +1410,7 @@ def schedule_watershed_processing(
         local_precip_path = _base_to_aligned_path_op(
             os.path.join(root_data_dir, PRECIP_RASTER_PATHS[landcover_id]))
         modified_load_task = task_graph.add_task(
+            n_retries=5,
             func=mult_arrays,
             args=(
                 modified_load_raster_path, gdal.GDT_Float32,
@@ -1381,6 +1424,7 @@ def schedule_watershed_processing(
         downstream_ret_eff_path = local_landcover_path.replace(
             '.tif', '_downstream_ret_eff.tif')
         downstream_ret_eff_task = task_graph.add_task(
+            n_retries=5,
             func=ipbes_ndr_analysis_cython.calculate_downstream_ret_eff,
             args=(
                 (flow_dir_path, 1), (channel_path, 1), (eff_n_raster_path, 1),
@@ -1397,6 +1441,7 @@ def schedule_watershed_processing(
         ndr_path = local_landcover_path.replace(
             '.tif', '_ndr.tif')
         ndr_task = task_graph.add_task(
+            n_retries=5,
             func=calculate_ndr,
             args=(downstream_ret_eff_path, ic_path, K_VAL, ndr_path),
             target_path_list=[ndr_path],
@@ -1407,6 +1452,7 @@ def schedule_watershed_processing(
         n_export_raster_path = local_landcover_path.replace(
             '.tif', '_%s_n_export.tif' % (landcover_id))
         n_export_task = task_graph.add_task(
+            n_retries=5,
             func=mult_arrays,
             args=(
                 n_export_raster_path, gdal.GDT_Float32, NODATA,
@@ -1419,6 +1465,7 @@ def schedule_watershed_processing(
         target_touch_path = local_landcover_path.replace(
             '.tif', '_database_insert.txt')
         aggregate_result_task = task_graph.add_task(
+            n_retries=5,
             func=aggregate_to_database,
             args=(
                 n_export_raster_path, modified_load_raster_path,

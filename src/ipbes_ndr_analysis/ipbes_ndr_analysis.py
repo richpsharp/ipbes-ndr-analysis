@@ -51,12 +51,12 @@ TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
-FLOW_THRESHOLD = 1000
+FLOW_THRESHOLD = 90
 RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -944,9 +944,12 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 aligned_file_set)
             watershed_feature = None
             task_id -= 1
+            break
         watershed_layer = None
         watershed_vector = None
+        break
 
+    """
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,
         func=add_watershed_geometry_and_regions,
@@ -958,8 +961,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
-
-
+    """
     task_graph.close()
     task_graph.join()
     LOGGER.info("all done :)")
@@ -1047,7 +1049,7 @@ def schedule_watershed_processing(
     epsg_code = int('32%d%02d' % (lat_code, utm_code))
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
-    utm_pixel_size = 90.0
+    utm_pixel_size = 500.0
     pixel_area_in_km2 = utm_pixel_size ** 2 / 1.e3**2
 
     watershed_geometry = None

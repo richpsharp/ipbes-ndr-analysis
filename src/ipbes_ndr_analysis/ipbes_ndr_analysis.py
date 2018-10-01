@@ -1625,7 +1625,10 @@ def reproject_geometry_to_target(
     target_feature = ogr.Feature(target_layer.GetLayerDefn())
     target_feature.SetGeometry(base_geom)
     target_layer.CreateFeature(target_feature)
+    target_layer.SyncToDisk()
     target_feature = None
+    target_layer = None
+    target_vector = None
 
 
 def unzip_file(zipfile_path, target_dir, touchfile_path):

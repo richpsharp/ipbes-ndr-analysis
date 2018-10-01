@@ -56,7 +56,7 @@ RET_LEN = 150.0
 K_VAL = 1.0
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -913,8 +913,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     load_n_lucode_map = dict(
         zip(biophysical_table['ID'], biophysical_table['load_n']))
 
-
-
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
@@ -961,6 +959,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
+
     task_graph.close()
     task_graph.join()
     LOGGER.info("all done :)")

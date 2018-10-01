@@ -560,10 +560,11 @@ def main(raw_iam_token_path, raw_workspace_dir):
     gpw_2010_dir = os.path.join(
         workspace_dir, BUCKET_DOWNLOAD_DIR, 'gpw_pop_densities')
 
-    try:
-        os.makedirs(workspace_dir)
-    except OSError:
-        pass
+    for dir_path in [workspace_dir, churn_dir, downloads_dir]:
+        try:
+            os.makedirs(dir_path)
+        except OSError:
+            pass
 
     task_graph = taskgraph.TaskGraph(
         os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,

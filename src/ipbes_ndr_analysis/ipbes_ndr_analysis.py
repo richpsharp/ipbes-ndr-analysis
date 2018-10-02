@@ -1482,7 +1482,7 @@ def schedule_watershed_processing(
 def merge_watershed_dems(
         watershed_bb, watershed_id, dem_rtree_path, dem_path_index_map_path,
         target_dem_path):
-    """Find DEMs that overlap the given watershed polyon by id.
+    """Find DEMs that overlap the given watershed polygon by id.
 
     Parameters:
         watershed_bb (string): watershed bounding box
@@ -1695,6 +1695,10 @@ def mask_raster_by_vector(
         target_band.WriteArray(
             target_array, xoff=offset_dict['xoff'],
             yoff=offset_dict['yoff'])
+    target_band.FlushCache()
+    target_band = None
+    target_raster.FlushCache()
+    target_raster = None
 
 
 def threshold_flow_accumulation(

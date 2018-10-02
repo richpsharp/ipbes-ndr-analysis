@@ -26,7 +26,7 @@ import pygeoprocessing.routing
 import ipbes_ndr_analysis_cython
 
 # set a 1GB limit for the cache
-gdal.SetCacheMax(2**30)
+gdal.SetCacheMax(32*2**30)
 
 
 class GdalErrorHandler(object):

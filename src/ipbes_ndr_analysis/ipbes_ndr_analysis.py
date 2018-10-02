@@ -948,6 +948,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         watershed_layer = None
         watershed_vector = None
 
+    """
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,
         func=add_watershed_geometry_and_regions,
@@ -959,6 +960,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
+    """
 
     task_graph.close()
     task_graph.join()
@@ -1674,7 +1676,10 @@ def mask_raster_by_vector(
     base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
     pygeoprocessing.new_raster_from_base(
         base_raster_path, target_masked_raster_path,
-        base_raster_info['datatype'], base_raster_info['nodata'])
+        base_raster_info['datatype'], base_raster_info['nodata'],
+        gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
 
     pygeoprocessing.rasterize(
         vector_path, target_masked_raster_path, [1], None)
@@ -1695,7 +1700,7 @@ def mask_raster_by_vector(
         target_band.WriteArray(
             target_array, xoff=offset_dict['xoff'],
             yoff=offset_dict['yoff'])
-    target_band.FlushCache()
+        target_band.FlushCache()
     target_band = None
     target_raster.FlushCache()
     target_raster = None

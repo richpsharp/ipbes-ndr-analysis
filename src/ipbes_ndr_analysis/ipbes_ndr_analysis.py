@@ -1821,7 +1821,7 @@ def add_watershed_geometry_and_regions(
                         conn.execute(
                             geom_sql_insert_string,
                             (ws_prefix, watershed_geometry.ExportToWkb(),
-                             country_name, region))
+                             region, country_name))
                 features_processed += 1
     database_lock.release()
     with open(finished_touch_file, 'w') as finished_file:

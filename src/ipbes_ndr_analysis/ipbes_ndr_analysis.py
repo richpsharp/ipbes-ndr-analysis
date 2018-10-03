@@ -948,7 +948,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         watershed_layer = None
         watershed_vector = None
 
-    """
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,
         func=add_watershed_geometry_and_regions,
@@ -960,7 +959,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
-    """
 
     task_graph.close()
     task_graph.join()

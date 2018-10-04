@@ -359,6 +359,19 @@ def aggregate_to_database(
     else:
         rural_pop_count = -1
 
+    # Table format
+    # CREATE TABLE IF NOT EXISTS nutrient_export (
+    #     ws_prefix_key TEXT NOT NULL,
+    #     scenario_key TEXT NOT NULL,
+    #     nutrient_export REAL NOT NULL,
+    #     modified_load REAL NOT NULL,
+    #     rural_pop_count REAL NOT NULL,
+    #     average_runoff_coefficient REAL NOT NULL,
+    #     ag_area REAL NOT NULL,
+    #     total_ag_load REAL NOT NULL,
+    #     PRIMARY KEY (ws_prefix_key, scenario_key)
+    # );
+
     with database_lock:
         conn = sqlite3.connect(target_database_path)
         if conn is not None:
@@ -368,7 +381,9 @@ def aggregate_to_database(
                     """INSERT OR REPLACE INTO nutrient_export VALUES
                        (?, ?, ?, ?, ?)""", (
                         ws_prefix, scenario_key, n_export_sum,
-                        n_modified_load_sum, rural_pop_count))
+                        n_modified_load_sum, rural_pop_count,
+                        average_runoff_coefficient, ag_area,
+                        total_ag_load))
             except:
                 LOGGER.exception('"%s %s"', n_export_sum, n_modified_load_sum)
             conn.commit()
@@ -867,6 +882,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
             nutrient_export REAL NOT NULL,
             modified_load REAL NOT NULL,
             rural_pop_count REAL NOT NULL,
+            average_runoff_coefficient REAL NOT NULL,
+            ag_area REAL NOT NULL,
+            total_ag_load REAL NOT NULL,
             PRIMARY KEY (ws_prefix_key, scenario_key)
         );
         CREATE UNIQUE INDEX IF NOT EXISTS ws_scenario_index
@@ -879,6 +897,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
             geometry_wgs84_wkb BLOB NOT NULL,
             region TEXT NOT NULL,
             country TEXT NOT NULL,
+            watershed_area REAL NOT NULL,
             PRIMARY KEY (ws_prefix_key)
         );
 
@@ -1370,16 +1389,31 @@ def schedule_watershed_processing(
 
         local_landcover_path = _base_to_aligned_path_op(
             os.path.join(root_data_dir, global_landcover_path))
+
+        # mask local landcover
+        masked_local_landcover_path = local_landcover_path.replace(
+            '.tif', '_masked.tif')
+
+        mask_landcover_task = task_graph.add_task(
+            n_retries=5,
+            func=mask_raster_by_vector,
+            args=(
+                local_landcover_path, local_watershed_path,
+                masked_local_landcover_path),
+            target_path_list=[masked_local_landcover_path],
+            dependent_task_list=[align_resize_task],
+            task_name='mask lulc %s %s' % (ws_prefix, landcover_id))
+
         eff_n_raster_path = local_landcover_path.replace(
             '.tif', '_eff_n.tif')
         reclassify_eff_n_task = task_graph.add_task(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
-                (local_landcover_path, 1), eff_n_lucode_map,
+                (masked_local_landcover_path, 1), eff_n_lucode_map,
                 eff_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[eff_n_raster_path],
-            dependent_task_list=[align_resize_task],
+            dependent_task_list=[align_resize_task, mask_landcover_task],
             task_name='reclassify_eff_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
@@ -1389,10 +1423,10 @@ def schedule_watershed_processing(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
-                (local_landcover_path, 1), load_n_lucode_map,
+                (masked_local_landcover_path, 1), load_n_lucode_map,
                 load_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[load_n_raster_path],
-            dependent_task_list=[align_resize_task],
+            dependent_task_list=[align_resize_task, mask_landcover_task],
             task_name='reclasify_load_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 

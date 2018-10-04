@@ -1861,8 +1861,17 @@ def add_watershed_geometry_and_regions(
     country_to_region_dict = {
         row[1][1]: row[1][0] for row in countries_myregions_df.iterrows()}
 
+    # CREATE TABLE IF NOT EXISTS geometry_table (
+    #     ws_prefix_key TEXT NOT NULL,
+    #     geometry_wgs84_wkb BLOB NOT NULL,
+    #     region TEXT NOT NULL,
+    #     country TEXT NOT NULL,
+    #     watershed_area REAL NOT NULL,
+    #     PRIMARY KEY (ws_prefix_key)
+    # );
+
     geom_sql_insert_string = (
-        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?, ?, ?)""")
+        """INSERT OR REPLACE INTO geometry_table VALUES (?, ?, ?, ?, ?)""")
 
     last_time = time.time()
 
@@ -1897,6 +1906,12 @@ def add_watershed_geometry_and_regions(
                 watershed_shapely = shapely.wkb.loads(
                     watershed_geometry.ExportToWkb())
 
+                watershed_area_deg2 = watershed_shapely.area
+                centroid = watershed_shapely.centroid
+                watershed_area_km2 = (
+                    watershed_area_deg2 * length_of_degree(centroid.y)**2) / (
+                    1000*2)
+
                 for country_index in country_rtree.intersection(
                         watershed_shapely.bounds):
                     if country_geom_list[country_index].intersects(
@@ -1907,11 +1922,12 @@ def add_watershed_geometry_and_regions(
                             region = country_to_region_dict[country_name]
                         except KeyError:
                             region = 'UNKNOWN'
+                        break
 
-                        conn.execute(
-                            geom_sql_insert_string,
-                            (ws_prefix, watershed_geometry.ExportToWkb(),
-                             region, country_name))
+                conn.execute(
+                    geom_sql_insert_string,
+                    (ws_prefix, watershed_geometry.ExportToWkb(),
+                     region, country_name, watershed_area_km2))
                 features_processed += 1
     database_lock.release()
     with open(finished_touch_file, 'w') as finished_file:

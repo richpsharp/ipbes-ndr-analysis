@@ -379,17 +379,17 @@ def aggregate_to_database(
     ag_nodata = pygeoprocessing.get_raster_info(
         ag_mask_raster_path)['nodata'][0]
     for _, data_block in pygeoprocessing.iterblocks(ag_mask_raster_path):
-        valid_mask = ~numpy.isclose(data_block, ag_nodata)
+        valid_mask = ~numpy.isclose(data_block, 999)
         ag_count += numpy.count_nonzero(valid_mask)
     ag_area = ag_count * abs(numpy.prod(
-        pygeoprocessing.get_raster_info(ag_mask_raster_path)['cell_size']))
+        pygeoprocessing.get_raster_info(ag_mask_raster_path)['pixel_size']))
 
     total_ag_load = 0.0
     ag_load_nodata = pygeoprocessing.get_raster_info(
         load_raster_path)['nodata'][0]
     for _, data_block in pygeoprocessing.iterblocks(load_raster_path):
         valid_mask = ~numpy.isclose(data_block, ag_load_nodata)
-        total_ag_load += numpy.sum(total_ag_load[valid_mask])
+        total_ag_load += numpy.sum(data_block[valid_mask])
 
     # Table format
     # CREATE TABLE IF NOT EXISTS nutrient_export (
@@ -411,7 +411,7 @@ def aggregate_to_database(
             try:
                 cursor.execute(
                     """INSERT OR REPLACE INTO nutrient_export VALUES
-                       (?, ?, ?, ?, ?)""", (
+                       (?, ?, ?, ?, ?, ?, ?, ?)""", (
                         ws_prefix, scenario_key, n_export_sum,
                         n_modified_load_sum, rural_pop_count,
                         average_runoff_coefficient, ag_area,

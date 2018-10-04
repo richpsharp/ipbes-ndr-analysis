@@ -289,9 +289,11 @@ def calculate_ag_load(
     def ag_load_op(base_load_n_array, ag_load_array):
         """raster calculator replace USE_AG_LOAD_ID with ag loads."""
         result = numpy.copy(base_load_n_array)
-        ag_mask = (result == USE_AG_LOAD_ID) & (
-            ~numpy.isclose(base_load_n_array, load_nodata))
-        result[ag_mask] = ag_load_array[ag_mask]
+        nodata_load_mask = numpy.isclose(ag_load_array, load_nodata)
+        ag_mask = (base_load_n_array == USE_AG_LOAD_ID)
+        result[ag_mask & ~nodata_load_mask] = (
+            ag_load_array[ag_mask & ~nodata_load_mask])
+        result[ag_mask & nodata_load_mask] = 0.0
         return result
 
     nodata = pygeoprocessing.get_raster_info(load_n_raster_path)['nodata'][0]

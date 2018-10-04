@@ -1430,7 +1430,6 @@ def schedule_watershed_processing(
             args=(
                 local_landcover_path, local_watershed_path,
                 masked_local_landcover_path),
-            kwargs={'base_nodata': [255]},
             target_path_list=[masked_local_landcover_path],
             dependent_task_list=[align_resize_task],
             task_name='mask lulc %s %s' % (ws_prefix, landcover_id))
@@ -1756,12 +1755,12 @@ def clean_and_pickle_biophysical_table(
 
 
 def mask_raster_by_vector(
-        base_raster_path, vector_path, target_masked_raster_path,
-        base_nodata=None):
+        base_raster_path, vector_path, target_masked_raster_path):
     """Mask out values in base raster that don't overlap with vector_path."""
     base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+    base_nodata = base_raster_info['nodata']
     if base_nodata is None:
-        base_nodata = base_raster_info['nodata']
+        base_nodata = [255]
     pygeoprocessing.new_raster_from_base(
         base_raster_path, target_masked_raster_path,
         base_raster_info['datatype'], base_nodata,

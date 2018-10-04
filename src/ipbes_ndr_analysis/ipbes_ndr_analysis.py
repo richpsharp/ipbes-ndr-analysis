@@ -290,7 +290,7 @@ def calculate_ag_load(
         """raster calculator replace USE_AG_LOAD_ID with ag loads."""
         result = numpy.copy(base_load_n_array)
         ag_mask = (result == USE_AG_LOAD_ID) & (
-            numpy.isclose(base_load_n_array, load_nodata))
+            ~numpy.isclose(base_load_n_array, load_nodata))
         result[ag_mask] = ag_load_array[ag_mask]
         return result
 

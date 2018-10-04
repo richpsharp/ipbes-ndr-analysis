@@ -1495,6 +1495,19 @@ def schedule_watershed_processing(
             task_name='modified_load_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
+        local_precip_masked_path = local_precip_path.replace(
+            '.tif', '_masked.tif')
+
+        mask_precip_task = task_graph.add_task(
+            n_retries=5,
+            func=mask_raster_by_vector,
+            args=(
+                local_precip_path, local_watershed_path,
+                local_precip_masked_path),
+            target_path_list=[local_precip_masked_path],
+            dependent_task_list=[align_resize_task],
+            task_name='mask precip %s %s' % (ws_prefix, landcover_id))
+
         # calculate eff_i
         downstream_ret_eff_path = local_landcover_path.replace(
             '.tif', '_downstream_ret_eff.tif')
@@ -1544,7 +1557,7 @@ def schedule_watershed_processing(
             func=aggregate_to_database,
             args=(
                 n_export_raster_path, modified_load_raster_path,
-                rural_scenario_pop_path, local_precip_path,
+                rural_scenario_pop_path, local_precip_masked_path,
                 load_n_raster_path, ag_load_path, ws_prefix,
                 landcover_id, database_lock, database_path,
                 target_touch_path),

@@ -46,7 +46,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS = max(1, multiprocessing.cpu_count())
+N_CPUS = -1 #max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
@@ -306,8 +306,9 @@ def calculate_ag_load(
 
 def aggregate_to_database(
         n_export_raster_path, n_modified_load_raster_path,
-        rural_pop_raster_path, ws_prefix,
-        scenario_key, database_lock, target_database_path, target_touch_path):
+        rural_pop_raster_path, runoff_raster_path, ag_mask_raster_path,
+        load_raster_path, ws_prefix, scenario_key, database_lock,
+        target_database_path, target_touch_path):
     """Aggregate nutrient export and load and save to database.
 
     This function creates a new database if it does not exist and aggregates
@@ -320,6 +321,10 @@ def aggregate_to_database(
             units of kg/pixel/yr. Values outside the watershed will be nodata.
         rural_pop_raster_path (string): path to rural population of units
             count / pixel. Values outside the watershed will be nodata.
+        runoff_raster_path (string): path to runoff index raster
+        ag_mask_raster_path (string): path to a raster that indicates ag
+            pixels by 999.
+        load_raster_path (string): path to complete nutrient loading raster
         ws_prefix (string): watershed ID used to uniquely identify the
             watershed.
         scenario_key (string): used to insert in database (values like 2015
@@ -358,6 +363,33 @@ def aggregate_to_database(
                 ~numpy.isclose(data_block, rural_nodata)])
     else:
         rural_pop_count = -1
+
+    runoff_nodata = pygeoprocessing.get_raster_info(
+        runoff_raster_path)['nodata'][0]
+    runoff_sum = 0.0
+    runoff_count = 0
+    for _, data_block in pygeoprocessing.iterblocks(runoff_raster_path):
+        valid_mask = ~numpy.isclose(data_block, runoff_nodata)
+        runoff_sum += numpy.sum(data_block[valid_mask])
+        runoff_count += numpy.count_nonzero(valid_mask)
+    average_runoff_coefficient = (
+        0.0 if runoff_count == 0 else runoff_sum / runoff_count)
+
+    ag_count = 0
+    ag_nodata = pygeoprocessing.get_raster_info(
+        ag_mask_raster_path)['nodata'][0]
+    for _, data_block in pygeoprocessing.iterblocks(ag_mask_raster_path):
+        valid_mask = ~numpy.isclose(data_block, ag_nodata)
+        ag_count += numpy.count_nonzero(valid_mask)
+    ag_area = ag_count * abs(numpy.prod(
+        pygeoprocessing.get_raster_info(ag_mask_raster_path)['cell_size']))
+
+    total_ag_load = 0.0
+    ag_load_nodata = pygeoprocessing.get_raster_info(
+        load_raster_path)['nodata'][0]
+    for _, data_block in pygeoprocessing.iterblocks(load_raster_path):
+        valid_mask = ~numpy.isclose(data_block, ag_load_nodata)
+        total_ag_load += numpy.sum(total_ag_load[valid_mask])
 
     # Table format
     # CREATE TABLE IF NOT EXISTS nutrient_export (
@@ -1400,6 +1432,7 @@ def schedule_watershed_processing(
             args=(
                 local_landcover_path, local_watershed_path,
                 masked_local_landcover_path),
+            kwargs={'base_nodata': [255]},
             target_path_list=[masked_local_landcover_path],
             dependent_task_list=[align_resize_task],
             task_name='mask lulc %s %s' % (ws_prefix, landcover_id))
@@ -1511,7 +1544,8 @@ def schedule_watershed_processing(
             func=aggregate_to_database,
             args=(
                 n_export_raster_path, modified_load_raster_path,
-                rural_scenario_pop_path, ws_prefix,
+                rural_scenario_pop_path, local_precip_path,
+                load_n_raster_path, ag_load_path, ws_prefix,
                 landcover_id, database_lock, database_path,
                 target_touch_path),
             dependent_task_list=[
@@ -1711,12 +1745,15 @@ def clean_and_pickle_biophysical_table(
 
 
 def mask_raster_by_vector(
-        base_raster_path, vector_path, target_masked_raster_path):
+        base_raster_path, vector_path, target_masked_raster_path,
+        base_nodata=None):
     """Mask out values in base raster that don't overlap with vector_path."""
     base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+    if base_nodata is None:
+        base_nodata = base_raster_info['nodata']
     pygeoprocessing.new_raster_from_base(
         base_raster_path, target_masked_raster_path,
-        base_raster_info['datatype'], base_raster_info['nodata'],
+        base_raster_info['datatype'], base_nodata,
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))

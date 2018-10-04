@@ -1759,7 +1759,7 @@ def mask_raster_by_vector(
     """Mask out values in base raster that don't overlap with vector_path."""
     base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
     base_nodata = base_raster_info['nodata']
-    if base_nodata is None:
+    if base_nodata[0] is None:
         base_nodata = [255]
     pygeoprocessing.new_raster_from_base(
         base_raster_path, target_masked_raster_path,

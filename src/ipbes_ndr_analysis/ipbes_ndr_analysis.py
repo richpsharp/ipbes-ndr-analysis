@@ -77,12 +77,12 @@ LANDCOVER_RASTER_PATHS = {
     '1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
     '1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
     '2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
-    'ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", 255),
-    'ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", 255),
-    'ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", 255),
-    'ssp1_he26pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", 255),
-    'ssp3_he60pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", 255),
-    'ssp5_he85pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", 255),
+    'ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
+    'ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
+    'ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
+    'ssp1_he26pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
+    'ssp3_he60pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
+    'ssp5_he85pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
 }
 
 PRECIP_DIR = 'precip_scenarios'
@@ -339,6 +339,14 @@ def aggregate_to_database(
     Returns:
         None.
     """
+    base_raster_info = pygeoprocessing.get_raster_info(n_export_raster_path)
+    local_bb = base_raster_info['bounding_box']
+    base_ref_wkt = base_raster_info['projection']
+    wgs84_sr = osr.SpatialReference()
+    wgs84_sr.ImportFromEPSG(4326)
+    pygeoprocessing.transform_bounding_box(
+        local_bb, base_ref_wkt, wgs84_sr.ExportToWkb(), edge_samples=11)
+
     n_export_sum = 0.0
     n_export_nodata = pygeoprocessing.get_raster_info(
         n_export_raster_path)['nodata'][0]

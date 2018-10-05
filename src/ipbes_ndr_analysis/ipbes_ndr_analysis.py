@@ -372,10 +372,10 @@ def aggregate_to_database(
                                 int(numpy.ceil(wgs84_bb[3]))):
                 ymin_g = max(grid_y, wgs84_bb[1])
                 ymax_g = min(grid_y+1, wgs84_bb[3])
-                ymin_i = int(
-                    ysize*(ymin_g-wgs84_bb[1])/(wgs84_bb[3]-wgs84_bb[1]))
                 ymax_i = int(
-                    ysize*(ymax_g-wgs84_bb[1])/(wgs84_bb[3]-wgs84_bb[1]))
+                    ysize*(1-((ymin_g-wgs84_bb[1])/(wgs84_bb[3]-wgs84_bb[1]))))
+                ymin_i = int(
+                    ysize*(1-((ymax_g-wgs84_bb[1])/(wgs84_bb[3]-wgs84_bb[1]))))
 
                 data_block = band.ReadAsArray(
                     xoff=xmin_i, yoff=ymin_i,
@@ -1030,6 +1030,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
             if ws_prefix in scheduled_watershed_prefixes:
                 raise ValueError('%s has already been scheduled', ws_prefix)
+            if watershed_fid != 84152:
+                continue
             scheduled_watershed_prefixes.add(ws_prefix)
             watershed_geom = watershed_feature.GetGeometryRef()
             watershed_area = watershed_geom.GetArea()
@@ -1052,10 +1054,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 aligned_file_set)
             watershed_feature = None
             task_id -= 1
-            break
         watershed_layer = None
         watershed_vector = None
-        break
 
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,
@@ -1085,15 +1085,70 @@ def aggregate_to_rasters(database_path, degree_raster_dir):
     except OSError:
         pass
 
-
-    AG_RASTER_PATHS
-
+    """
     for path, value_id in [
             (n_export_raster_path, 'n_export'),
             (n_modified_load_raster_path, 'n_load'),
             (rural_pop_raster_path, 'rural_pop')]:
         if not path:
             continue
+    """
+    geotiff_driver = gdal.GetDriverByName('GTiff')
+    wgs84_sr = osr.SpatialReference()
+    wgs84_sr.ImportFromEPSG(4326)
+    aggregate_arrays = {}
+    for scenario_key in AG_RASTER_PATHS:
+        for aggregate_type in ('n_export', 'n_load', 'rural_pop'):
+            target_path = os.path.join(
+                degree_raster_dir, '%s_%s_degree.tif' % (
+                    scenario_key, aggregate_type))
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            target_raster = geotiff_driver.Create(
+                target_path, 360, 180, 1, gdal.GDT_Float32,
+                options=('COMPRESS=DEFLATE',))
+
+            target_raster.SetProjection(wgs84_sr.ExportToWkt())
+            target_raster.SetGeoTransform([-180.0, 1.0, 0.0, 90.0, 0.0, -1.0])
+            target_band = target_raster.GetRasterBand(1)
+            target_band.SetNoDataValue(-1)
+            target_band.Fill(0)
+            aggregate_arrays[
+                (scenario_key, aggregate_type)] = (
+                    numpy.zeros((180, 360)), target_raster)
+
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    for scenario_key in AG_RASTER_PATHS:
+        # CREATE TABLE IF NOT EXISTS nutrient_export (
+        #     ws_prefix_key TEXT NOT NULL,
+        #     scenario_key TEXT NOT NULL,
+        #     nutrient_export REAL NOT NULL,
+        #     modified_load REAL NOT NULL,
+        #     rural_pop_count REAL NOT NULL,
+        #     average_runoff_coefficient REAL NOT NULL,
+        #     ag_area REAL NOT NULL,
+        #     total_ag_load REAL NOT NULL,
+        #     grid_aggregation_pickle BLOB NOT NULL,
+        #     PRIMARY KEY (ws_prefix_key, scenario_key)
+        # );
+
+        cursor.execute(
+            """SELECT grid_aggregation_pickle FROM nutrient_export
+            WHERE (scenario_key = ?)""", (scenario_key,))
+        for result in cursor:
+            grid_aggregation_pickle = dill.loads(result[0])
+            for aggregate_type, grid_list in grid_aggregation_pickle.items():
+                for value, (lng, lat) in grid_list:
+                    x_i = lng+180
+                    y_i = 90-lat-1
+                    aggregate_arrays[
+                        (scenario_key, aggregate_type)][0][y_i, x_i] += value
+    for array, target_raster in aggregate_arrays.values():
+        target_band = target_raster.GetRasterBand(1)
+        target_band.WriteArray(array)
+        target_band.FlushCache()
 
 
 def schedule_watershed_processing(

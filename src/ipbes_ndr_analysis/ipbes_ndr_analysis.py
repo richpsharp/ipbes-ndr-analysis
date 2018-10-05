@@ -1558,7 +1558,7 @@ def schedule_watershed_processing(
             args=(
                 local_landcover_path, local_watershed_path,
                 masked_local_landcover_path),
-            kwargs={'target_nodata': 255},
+            kwargs={'target_nodata': global_landcover_nodata},
             target_path_list=[masked_local_landcover_path],
             dependent_task_list=[align_resize_task],
             task_name='mask lulc %s %s' % (ws_prefix, landcover_id))

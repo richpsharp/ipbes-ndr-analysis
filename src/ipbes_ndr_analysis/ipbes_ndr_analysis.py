@@ -1029,8 +1029,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
             if ws_prefix in scheduled_watershed_prefixes:
                 raise ValueError('%s has already been scheduled', ws_prefix)
-            if watershed_fid != 84152:
-                continue
             scheduled_watershed_prefixes.add(ws_prefix)
             watershed_geom = watershed_feature.GetGeometryRef()
             watershed_area = watershed_geom.GetArea()

@@ -347,6 +347,45 @@ def aggregate_to_database(
     wgs84_bb = pygeoprocessing.transform_bounding_box(
         local_bb, base_ref_wkt, wgs84_sr.ExportToWkt(), edge_samples=11)
 
+    xsize, ysize = base_raster_info['raster_size']
+    aggregate_dict = {
+        'n_export': [],
+        'n_load': [],
+        'rural_pop': [],
+    }
+    for path, value_id in [
+            (n_export_raster_path, 'n_export'),
+            (n_modified_load_raster_path, 'n_load'),
+            (rural_pop_raster_path, 'rural_pop')]:
+        if not path:
+            continue
+        raster = gdal.OpenEx(path, gdal.OF_RASTER)
+        band = raster.GetRasterBand(1)
+        nodata = band.GetNoDataValue()
+        for grid_x in range(int(numpy.floor(wgs84_bb[0])),
+                            int(numpy.ceil(wgs84_bb[2]))):
+            xmin_g = max(grid_x, wgs84_bb[0])
+            xmax_g = min(grid_x+1, wgs84_bb[2])
+            xmin_i = int(xsize*(xmin_g-wgs84_bb[0])/(wgs84_bb[2]-wgs84_bb[0]))
+            xmax_i = int(xsize*(xmax_g-wgs84_bb[0])/(wgs84_bb[2]-wgs84_bb[0]))
+            for grid_y in range(int(numpy.floor(wgs84_bb[1])),
+                                int(numpy.ceil(wgs84_bb[3]))):
+                ymin_g = max(grid_y, wgs84_bb[1])
+                ymax_g = min(grid_y+1, wgs84_bb[3])
+                ymin_i = int(
+                    ysize*(ymin_g-wgs84_bb[1])/(wgs84_bb[3]-wgs84_bb[1]))
+                ymax_i = int(
+                    ysize*(ymax_g-wgs84_bb[1])/(wgs84_bb[3]-wgs84_bb[1]))
+
+                data_block = band.ReadAsArray(
+                    xoff=xmin_i, yoff=ymin_i,
+                    win_xsize=xmax_i-xmin_i,
+                    win_ysize=ymax_i-ymin_i)
+                valid_sum = numpy.sum(
+                    data_block[~numpy.isclose(data_block, nodata)])
+                aggregate_dict[value_id].append(
+                    (valid_sum, (grid_x, grid_y)))
+
     n_export_sum = 0.0
     n_export_nodata = pygeoprocessing.get_raster_info(
         n_export_raster_path)['nodata'][0]
@@ -409,6 +448,7 @@ def aggregate_to_database(
     #     average_runoff_coefficient REAL NOT NULL,
     #     ag_area REAL NOT NULL,
     #     total_ag_load REAL NOT NULL,
+    #     grid_aggregation_pickle BLOB NOT NULL,
     #     PRIMARY KEY (ws_prefix_key, scenario_key)
     # );
 
@@ -417,13 +457,14 @@ def aggregate_to_database(
         if conn is not None:
             cursor = conn.cursor()
             try:
+                LOGGER.debug("aggregate dict %s", aggregate_dict)
                 cursor.execute(
                     """INSERT OR REPLACE INTO nutrient_export VALUES
-                       (?, ?, ?, ?, ?, ?, ?, ?)""", (
+                       (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
                         ws_prefix, scenario_key, n_export_sum,
                         n_modified_load_sum, rural_pop_count,
                         average_runoff_coefficient, ag_area,
-                        total_ag_load))
+                        total_ag_load, dill.dumps(aggregate_dict)))
             except:
                 LOGGER.exception('"%s %s"', n_export_sum, n_modified_load_sum)
             conn.commit()
@@ -925,6 +966,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
             average_runoff_coefficient REAL NOT NULL,
             ag_area REAL NOT NULL,
             total_ag_load REAL NOT NULL,
+            grid_aggregation_pickle BLOB NOT NULL,
             PRIMARY KEY (ws_prefix_key, scenario_key)
         );
         CREATE UNIQUE INDEX IF NOT EXISTS ws_scenario_index
@@ -1010,8 +1052,10 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 aligned_file_set)
             watershed_feature = None
             task_id -= 1
+            break
         watershed_layer = None
         watershed_vector = None
+        break
 
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,

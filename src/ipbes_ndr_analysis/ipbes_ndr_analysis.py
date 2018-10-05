@@ -457,7 +457,6 @@ def aggregate_to_database(
         if conn is not None:
             cursor = conn.cursor()
             try:
-                LOGGER.debug("aggregate dict %s", aggregate_dict)
                 cursor.execute(
                     """INSERT OR REPLACE INTO nutrient_export VALUES
                        (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (

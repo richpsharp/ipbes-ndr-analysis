@@ -46,7 +46,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS = max(1, multiprocessing.cpu_count())
+N_CPUS = -1 # max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
@@ -71,18 +71,18 @@ WATERSHED_PROCESSING_DIR = 'watershed_processing'
 # The following paths will be relative to the workspace directory
 LANDUSE_DIR = 'globio_landuse_scenarios'
 LANDCOVER_RASTER_PATHS = {
-    '1850': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif",
-    '1900': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif",
-    '1910': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif",
-    '1945': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif",
-    '1980': f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif",
-    '2015': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif",
-    'ssp1': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif",
-    'ssp3': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif",
-    'ssp5': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif",
-    'ssp1_he26pr50': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif",
-    'ssp3_he60pr50': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif",
-    'ssp5_he85pr50': f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif",
+    '1850': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif", 255),
+    '1900': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif", 255),
+    '1910': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif", 255),
+    '1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
+    '1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
+    '2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
+    'ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", 255),
+    'ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", 255),
+    'ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", 255),
+    'ssp1_he26pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", 255),
+    'ssp3_he60pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", 255),
+    'ssp5_he85pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", 255),
 }
 
 PRECIP_DIR = 'precip_scenarios'
@@ -978,6 +978,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
         for watershed_feature in watershed_layer:
             watershed_fid = watershed_feature.GetFID()
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
+            if watershed_fid != 2342:
+                continue
             if ws_prefix in scheduled_watershed_prefixes:
                 raise ValueError('%s has already been scheduled', ws_prefix)
             scheduled_watershed_prefixes.add(ws_prefix)
@@ -989,6 +991,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
                 # 100 sq km which is about the minimum watershed size we'd
                 # want.
                 continue
+            LOGGER.debug('*************************************************************************')
             schedule_watershed_processing(
                 task_graph, database_path, database_lock, task_id, ws_prefix,
                 global_watershed_path, watershed_fid, dem_rtree_path,
@@ -1136,8 +1139,9 @@ def schedule_watershed_processing(
 
     base_raster_path_list = sorted(list(set(
         [os.path.join(root_data_dir, path)
-         for path in list(LANDCOVER_RASTER_PATHS.values()) +
-         list(PRECIP_RASTER_PATHS.values()) +
+         for (path, _) in list(LANDCOVER_RASTER_PATHS.values())] +
+        [os.path.join(root_data_dir, path)
+         for path in list(PRECIP_RASTER_PATHS.values()) +
          list(AG_RASTER_PATHS.values()) +
          list(POPULATION_RASTER_PATHS.values())])))
     base_raster_path_list.extend(
@@ -1385,7 +1389,8 @@ def schedule_watershed_processing(
         task_name='ic_%s' % ws_prefix,
         priority=task_id)
 
-    for landcover_id, global_landcover_path in LANDCOVER_RASTER_PATHS.items():
+    for landcover_id, (global_landcover_path, global_landcover_nodata) in (
+            LANDCOVER_RASTER_PATHS.items()):
         # calculate rural population
         cur_or_fut_scenario = [
             scenario for scenario in ('2015', 'ssp1', 'ssp3', 'ssp5')
@@ -1430,7 +1435,7 @@ def schedule_watershed_processing(
             args=(
                 local_landcover_path, local_watershed_path,
                 masked_local_landcover_path),
-            kwargs={'backup_nodata': 255},
+            kwargs={'target_nodata': 255},
             target_path_list=[masked_local_landcover_path],
             dependent_task_list=[align_resize_task],
             task_name='mask lulc %s %s' % (ws_prefix, landcover_id))
@@ -1757,12 +1762,13 @@ def clean_and_pickle_biophysical_table(
 
 def mask_raster_by_vector(
         base_raster_path, vector_path, target_masked_raster_path,
-        backup_nodata=None):
+        target_nodata=None):
     """Mask out values in base raster that don't overlap with vector_path."""
     base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
-    base_nodata = base_raster_info['nodata']
-    if base_nodata[0] is None:
-        base_nodata = [backup_nodata]
+    if target_nodata:
+        base_nodata = [target_nodata]
+    else:
+        base_nodata = base_raster_info['nodata']
     pygeoprocessing.new_raster_from_base(
         base_raster_path, target_masked_raster_path,
         base_raster_info['datatype'], base_nodata,

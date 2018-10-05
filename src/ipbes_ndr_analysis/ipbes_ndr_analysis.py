@@ -1071,7 +1071,29 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     task_graph.close()
     task_graph.join()
+
+    degree_raster_dir = os.path.join(workspace_dir, 'degree_rasters')
+    aggregate_to_rasters(database_path, degree_raster_dir)
+
     LOGGER.info("all done :)")
+
+
+def aggregate_to_rasters(database_path, degree_raster_dir):
+    """Get all degree info out of database and write to rasters."""
+    try:
+        os.makedirs(degree_raster_dir)
+    except OSError:
+        pass
+
+
+    AG_RASTER_PATHS
+
+    for path, value_id in [
+            (n_export_raster_path, 'n_export'),
+            (n_modified_load_raster_path, 'n_load'),
+            (rural_pop_raster_path, 'rural_pop')]:
+        if not path:
+            continue
 
 
 def schedule_watershed_processing(

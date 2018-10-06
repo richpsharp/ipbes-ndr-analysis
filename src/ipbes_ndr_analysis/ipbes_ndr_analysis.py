@@ -93,7 +93,7 @@ PRECIP_RASTER_PATHS = {
     '1910': f'{PRECIP_DIR}/precip_1910.tif',
     '1945': f'{PRECIP_DIR}/precip_1945.tif',
     '1980': f'{PRECIP_DIR}/precip_1980.tif',
-    '2015': f'{PRECIP_DIR}/precip_2015.tif',
+    '2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     'ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     'ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
     'ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
@@ -803,6 +803,19 @@ def main(raw_iam_token_path, raw_workspace_dir):
         target_path_list=[precip_scenarios_touch_file_path],
         dependent_task_list=[fetch_precip_scenarios_task],
         task_name=f'unzip precip_scenarios')
+
+    worldclim_2015_path = os.path.join(
+        precip_scenarios_dir_path,
+        'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif')
+    fetch_worldclim_2015_task = task_graph.add_task(
+        n_retries=5,
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ipbes-ndr-ecoshard-data',
+            'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+            iam_token_path, worldclim_2015_path),
+        target_path_list=[worldclim_2015_path],
+        task_name='fetch globio landuse')
 
     globio_landuse_archive_path = os.path.join(
         downloads_dir,

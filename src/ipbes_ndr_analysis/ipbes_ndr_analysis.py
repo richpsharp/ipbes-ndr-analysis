@@ -2065,12 +2065,11 @@ def add_watershed_geometry_and_regions(
                             region = country_to_region_dict[country_name]
                         except KeyError:
                             region = 'UNKNOWN'
+                        conn.execute(
+                            geom_sql_insert_string,
+                            (ws_prefix, watershed_geometry.ExportToWkb(),
+                             region, country_name, watershed_area_km2))
                         break
-
-                conn.execute(
-                    geom_sql_insert_string,
-                    (ws_prefix, watershed_geometry.ExportToWkb(),
-                     region, country_name, watershed_area_km2))
                 features_processed += 1
     database_lock.release()
     with open(finished_touch_file, 'w') as finished_file:

@@ -46,7 +46,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS = max(1, multiprocessing.cpu_count())
+N_CPUS = -1 #max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
@@ -1031,7 +1031,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         zip(biophysical_table['ID'], biophysical_table['eff_n']))
     load_n_lucode_map = dict(
         zip(biophysical_table['ID'], biophysical_table['load_n']))
-
+    """
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
@@ -1066,7 +1066,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
             task_id -= 1
         watershed_layer = None
         watershed_vector = None
-
+    """
     add_watershed_regions_task = task_graph.add_task(
         n_retries=5,
         func=add_watershed_geometry_and_regions,

@@ -671,6 +671,27 @@ def main(raw_iam_token_path, raw_workspace_dir):
         os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
         TASKGRAPH_REPORTING_FREQUENCY)
 
+    degree_basedata_url = (
+        'https://storage.cloud.google.com/ecoshard-root/ipbes/'
+        'degree_basedata_md5_73a03fa0f5fb622e8d0f07c616576677.zip')
+    degree_zipfile_path = os.path.join(
+        CHURN_DIR, os.path.basename(degree_basedata_url))
+    degree_basedata_fetch_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(degree_basedata_url, iam_token_path, degree_zipfile_path),
+        target_path_list=[degree_zipfile_path],
+        task_name=f'fetch {os.path.basename(degree_zipfile_path)}')
+    zip_touch_file_path = os.path.join(
+        os.path.dirname(degree_zipfile_path), 'degree_basedata_zip.txt')
+    __ = task_graph.add_task(
+        func=unzip_file,
+        args=(
+            degree_zipfile_path, os.path.dirname(degree_zipfile_path),
+            zip_touch_file_path),
+        target_path_list=[zip_touch_file_path],
+        dependent_task_list=[degree_basedata_fetch_task],
+        task_name=f'unzip degree_basedata_zip')
+
     gpw_buckets = {
         'gpw_v4_e_a000_014ft_2010_dens': (
             'ecoshard-root',
@@ -1082,6 +1103,91 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     degree_raster_dir = os.path.join(workspace_dir, 'degree_rasters')
     aggregate_to_rasters(database_path, degree_raster_dir)
+
+    countries_myregions_df = pandas.read_csv(
+        countries_regions_table_path,
+        usecols=['country', 'myregions'], sep=',')
+    country_to_region_dict = {
+        row[1][1]: row[1][0] for row in countries_myregions_df.iterrows()}
+
+    LOGGER.debug("build country spatial index")
+    country_rtree, country_geom_list = build_spatial_index(
+        tm_world_borders_path)
+    grid_shapefile_path = os.path.join(CHURN_DIR, 'grid_1_degree.shp')
+    grid_shapefile_vector = gdal.OpenEx(grid_shapefile_path, gdal.OF_VECTOR)
+    geopackage_driver = gdal.GetDriverByName('GPKG')
+    target_summary_shapefile_path = os.path.join(
+        workspace_dir, f'ipbes_ndr_summary.gpkg')
+    target_summary_grid_vector = geopackage_driver.CreateCopy(
+        target_summary_shapefile_path, grid_shapefile_vector)
+    target_summary_grid_layer = target_summary_grid_vector.GetLayer()
+
+    for field_name in ['country', 'region']:
+        target_summary_grid_layer.CreateField(
+            ogr.FieldDefn(field_name, ogr.OFTString))
+
+    array_feature_id_map = {}
+    degree_raster_paths = glob.glob(degree_raster_dir, '*.tif')
+    for degree_path in degree_raster_paths:
+        field_name = os.path.basename(
+            os.path.splitext(degree_raster_paths)[0])
+        target_summary_grid_layer.CreateField(
+            ogr.FieldDefn(field_name, ogr.OFTReal))
+
+        raster = gdal.OpenEx(degree_path, gdal.OF_RASTER)
+        band = raster.GetRasterBand(1)
+        x_size = band.XSize
+        y_size = band.YSize
+        array_feature_id_map[field_name] = band.ReadAsArray()
+        gt = raster.GetGeoTransform()
+        band = None
+        raster = None
+
+    country_vector = gdal.OpenEx(tm_world_borders_path, gdal.OF_VECTOR)
+    country_layer = country_vector.GetLayer()
+
+    total_grid_count = target_summary_grid_layer.GetFeatureCount()
+    last_time = time.time()
+    for grid_index, grid_feature in enumerate(target_summary_grid_layer):
+        current_time = time.time()
+        if current_time - last_time > 5.0:
+            last_time = current_time
+            LOGGER.debug(
+                "processing grid intersection %.2f%% complete",
+                (100.0 * (grid_index+1)) / total_grid_count)
+
+        grid_feature_geom_ref = grid_feature.GetGeometryRef()
+        centroid = grid_feature_geom_ref.Centroid()
+
+        grid_feature_geom = shapely.wkb.loads(
+            grid_feature.GetGeometryRef().ExportToWkb())
+
+        for country_index in country_rtree.intersection(
+                grid_feature_geom.bounds):
+            if country_geom_list[country_index].intersects(grid_feature_geom):
+                country_name = country_layer.GetFeature(
+                    country_index).GetField('name')
+                grid_feature.SetField('country', country_name)
+                try:
+                    grid_feature.SetField(
+                        'region', country_to_region_dict[country_name])
+                except KeyError:
+                    grid_feature.SetField('region', 'UNKNOWN')
+                break
+
+        long_coord = centroid.GetX()
+        lat_coord = centroid.GetY()
+
+        x_coord = int((long_coord - gt[0]) / gt[1])
+        if not 0 <= x_coord < x_size:
+            continue
+        y_coord = int((lat_coord - gt[3]) / gt[5])
+        if not 0 <= y_coord < y_size:
+            continue
+        for field_name, raster_array in array_feature_id_map.items():
+            pixel_value = raster_array[y_coord, x_coord]
+            grid_feature.SetField(field_name, float(pixel_value))
+        target_summary_grid_layer.SetFeature(grid_feature)
 
     LOGGER.info("all done :)")
 

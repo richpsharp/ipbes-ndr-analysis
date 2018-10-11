@@ -1045,7 +1045,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     aligned_file_set = set()
 
     task_graph.join()
-
     with open(clean_biophysical_table_pickle_path, 'rb') as \
             biophysical_table_file:
         biophysical_table = dill.load(biophysical_table_file)
@@ -1099,7 +1098,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         dependent_task_list=[
             unzip_watersheds_task, unzip_world_borders_task],
         task_name='processing watershed geometry')
-
     task_graph.close()
     task_graph.join()
 
@@ -1129,10 +1127,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
             ogr.FieldDefn(field_name, ogr.OFTString))
 
     array_feature_id_map = {}
-    degree_raster_paths = glob.glob(degree_raster_dir, '*.tif')
+    degree_raster_paths = glob.glob(os.path.join(degree_raster_dir, '*.tif'))
     for degree_path in degree_raster_paths:
-        field_name = os.path.basename(
-            os.path.splitext(degree_raster_paths)[0])
+        field_name = os.path.basename(os.path.splitext(degree_path)[0])
         target_summary_grid_layer.CreateField(
             ogr.FieldDefn(field_name, ogr.OFTReal))
 

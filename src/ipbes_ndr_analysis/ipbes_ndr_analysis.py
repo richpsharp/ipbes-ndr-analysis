@@ -845,7 +845,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         task_name='fetch globio landuse')
 
     esacci_landuse_path = os.path.join(
-        churn_dir,
+        churn_dir, LANDUSE_DIR,
         'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
     fetch_esacci_landuse_task = task_graph.add_task(
         n_retries=5,

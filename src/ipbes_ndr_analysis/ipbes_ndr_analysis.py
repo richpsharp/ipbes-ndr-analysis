@@ -77,6 +77,7 @@ LANDCOVER_RASTER_PATHS = {
     '1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
     '1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
     '2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
+    'ESACCI_LC_L4_LCSS': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
     'ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
     'ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
     'ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
@@ -94,6 +95,7 @@ PRECIP_RASTER_PATHS = {
     '1945': f'{PRECIP_DIR}/precip_1945.tif',
     '1980': f'{PRECIP_DIR}/precip_1980.tif',
     '2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'ESACCI_LC_L4_LCSS': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     'ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     'ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
     'ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
@@ -112,6 +114,7 @@ AG_RASTER_PATHS = {
     '1945': f'{AG_LOAD_DIR}/1945_ag_load.tif',
     '1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
     '2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'ESACCI_LC_L4_LCSS': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     'ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
     'ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
     'ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
@@ -128,6 +131,7 @@ POPULATION_RASTER_PATHS = {
     'ssp3_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP3_GeoTIFF/rural/GeoTIFF/ssp3rur2050.tif',
     'ssp5_rur': f'{POPULATION_SCENARIOS_DIR}/Spatial_population_scenarios_GeoTIFF/SSP5_GeoTIFF/rural/GeoTIFF/ssp5rur2050.tif',
 }
+
 
 def db_to_shapefile(database_path, target_vector_path):
     """Convert database to vector.
@@ -840,6 +844,19 @@ def main(raw_iam_token_path, raw_workspace_dir):
         target_path_list=[worldclim_2015_path],
         task_name='fetch globio landuse')
 
+    esacci_landuse_path = os.path.join(
+        churn_dir,
+        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
+    fetch_esacci_landuse_task = task_graph.add_task(
+        n_retries=5,
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            'ipbes-ndr-ecoshard-data',
+            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif',
+            iam_token_path, esacci_landuse_path),
+        target_path_list=[esacci_landuse_path],
+        task_name='fetch esacci landuse')
+
     globio_landuse_archive_path = os.path.join(
         downloads_dir,
         'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip')
@@ -895,13 +912,13 @@ def main(raw_iam_token_path, raw_workspace_dir):
         churn_dir, 'watersheds_globe_HydroSHEDS_15arcseconds')
 
     biophysical_table_path = os.path.join(
-        downloads_dir, 'NDR_representative_table_md5_488c9843694843ef53d647f25f230fd6.csv')
+        downloads_dir, 'NDR_representative_table_md5_fbc7ee8cc37e4270837ce0d1cf681899.csv')
     download_biophysical_table_task = task_graph.add_task(
         n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
-            'NDR_representative_table_md5_488c9843694843ef53d647f25f230fd6.csv',
+            'NDR_representative_table_md5_fbc7ee8cc37e4270837ce0d1cf681899.csv',
             iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
         task_name='download biophysical table')
@@ -1043,8 +1060,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
     task_id = 0
     scheduled_watershed_prefixes = set()
     aligned_file_set = set()
-
     task_graph.join()
+
     with open(clean_biophysical_table_pickle_path, 'rb') as \
             biophysical_table_file:
         biophysical_table = dill.load(biophysical_table_file)

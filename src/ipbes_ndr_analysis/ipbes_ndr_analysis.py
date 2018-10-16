@@ -912,13 +912,13 @@ def main(raw_iam_token_path, raw_workspace_dir):
         churn_dir, 'watersheds_globe_HydroSHEDS_15arcseconds')
 
     biophysical_table_path = os.path.join(
-        downloads_dir, 'NDR_representative_table_md5_fbc7ee8cc37e4270837ce0d1cf681899.csv')
+        downloads_dir, 'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv')
     download_biophysical_table_task = task_graph.add_task(
         n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'ipbes-ndr-ecoshard-data',
-            'NDR_representative_table_md5_fbc7ee8cc37e4270837ce0d1cf681899.csv',
+            'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv',
             iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
         task_name='download biophysical table')

@@ -51,7 +51,9 @@ TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
 USE_AG_LOAD_ID = 999
-FLOW_THRESHOLD = 90
+UTM_PIXEL_SIZE = 90.0
+# we used to do 90 flow threshold on 500 m pixels so this does 90.
+FLOW_THRESHOLD = int(500**2*90 / UTM_PIXEL_SIZE)
 RET_LEN = 150.0
 K_VAL = 1.0
 
@@ -1363,8 +1365,7 @@ def schedule_watershed_processing(
     epsg_code = int('32%d%02d' % (lat_code, utm_code))
     epsg_srs = osr.SpatialReference()
     epsg_srs.ImportFromEPSG(epsg_code)
-    utm_pixel_size = 500.0
-    pixel_area_in_km2 = utm_pixel_size ** 2 / 1.e3**2
+    pixel_area_in_km2 = UTM_PIXEL_SIZE ** 2 / 1.e3**2
 
     watershed_geometry = None
     watershed_layer = None
@@ -1451,7 +1452,7 @@ def schedule_watershed_processing(
         args=(
             base_raster_path_list, aligned_path_list,
             interpolation_mode_list,
-            (utm_pixel_size, -utm_pixel_size),
+            (UTM_PIXEL_SIZE, -UTM_PIXEL_SIZE),
             target_bounding_box),
         kwargs={
             'base_sr_wkt_list': [wgs84_sr.ExportToWkt()] * len(
@@ -1563,7 +1564,7 @@ def schedule_watershed_processing(
     d_up_task = task_graph.add_task(
         n_retries=5,
         func=DUpOp(
-            utm_pixel_size**2, slope_accum_watershed_dem_path,
+            UTM_PIXEL_SIZE**2, slope_accum_watershed_dem_path,
             flow_accum_path, d_up_raster_path),
         target_path_list=[d_up_raster_path],
         dependent_task_list=[slope_accumulation_task, flow_accum_task],
@@ -1603,7 +1604,7 @@ def schedule_watershed_processing(
     downstream_flow_distance_task = task_graph.add_task(
         n_retries=5,
         func=MultByScalar(
-            (pixel_flow_length_raster_path, 1), utm_pixel_size, NODATA,
+            (pixel_flow_length_raster_path, 1), UTM_PIXEL_SIZE, NODATA,
             downstream_flow_distance_path),
         target_path_list=[downstream_flow_distance_path],
         dependent_task_list=[downstream_flow_length_task],

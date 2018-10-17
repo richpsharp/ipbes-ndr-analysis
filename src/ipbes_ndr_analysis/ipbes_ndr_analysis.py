@@ -931,7 +931,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
         func=clean_and_pickle_biophysical_table,
         args=(biophysical_table_path, clean_biophysical_table_pickle_path),
         target_path_list=[clean_biophysical_table_pickle_path],
-        dependent_task_list=[download_biophysical_table_task])
+        dependent_task_list=[download_biophysical_table_task],
+        task_name='pickle biophysical table')
 
     countries_regions_table_path = os.path.join(
         downloads_dir,
@@ -1046,6 +1047,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     cursor.executescript(sql_create_projects_table)
     multiprocessing_manager = multiprocessing.Manager()
     database_lock = multiprocessing_manager.Lock()
+    task_graph.join()
 
     tm_world_borders_path = os.path.join(
         churn_dir, 'TM_WORLD_BORDERS-0.3.shp')
@@ -1062,7 +1064,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     task_id = 0
     scheduled_watershed_prefixes = set()
     aligned_file_set = set()
-    task_graph.join()
 
     with open(clean_biophysical_table_pickle_path, 'rb') as \
             biophysical_table_file:

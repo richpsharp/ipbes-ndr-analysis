@@ -1433,12 +1433,24 @@ def schedule_watershed_processing(
         raise ValueError(
             "%s files might be duplicately processed", aligned_path_list)
     aligned_file_set.update(aligned_path_list)
+
+    landcover_basename_set = set(
+        [os.path.basename(path)
+         for path, _ in LANDCOVER_RASTER_PATHS.values()])
+
+    interpolation_mode_list = []
+    for path in base_raster_path_list:
+        if os.path.basename(path) in landcover_basename_set:
+            interpolation_mode_list.append('mode')
+        else:
+            interpolation_mode_list.append('near')
+
     align_resize_task = task_graph.add_task(
         n_retries=5,
         func=pygeoprocessing.align_and_resize_raster_stack,
         args=(
             base_raster_path_list, aligned_path_list,
-            ['near'] * len(base_raster_path_list),
+            interpolation_mode_list,
             (utm_pixel_size, -utm_pixel_size),
             target_bounding_box),
         kwargs={

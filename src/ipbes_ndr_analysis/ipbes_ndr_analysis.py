@@ -1716,24 +1716,28 @@ def schedule_watershed_processing(
 
         eff_n_raster_path = local_landcover_path.replace(
             '.tif', '_eff_n.tif')
+        eff_n_lucode_map_nodata = eff_n_lucode_map.copy()
+        eff_n_lucode_map_nodata[global_landcover_nodata] = 0.0
         reclassify_eff_n_task = task_graph.add_task(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
-                (local_landcover_path, 1), eff_n_lucode_map,
+                (local_landcover_path, 1), eff_n_lucode_map_nodata,
                 eff_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[eff_n_raster_path],
             dependent_task_list=[align_resize_task],
             task_name='reclassify_eff_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
+        load_n_lucode_map_copy = load_n_lucode_map.copy()
+        load_n_lucode_map_copy[global_landcover_nodata] = 0.0
         load_n_raster_path = local_landcover_path.replace(
             '.tif', '_load_n.tif')
         reclassify_load_n_task = task_graph.add_task(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
-                (local_landcover_path, 1), load_n_lucode_map,
+                (local_landcover_path, 1), load_n_lucode_map_copy,
                 load_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[load_n_raster_path],
             dependent_task_list=[align_resize_task],

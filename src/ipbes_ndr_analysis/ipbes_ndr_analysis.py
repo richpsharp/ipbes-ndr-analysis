@@ -1717,7 +1717,7 @@ def schedule_watershed_processing(
         eff_n_raster_path = local_landcover_path.replace(
             '.tif', '_eff_n.tif')
         eff_n_lucode_map_nodata = eff_n_lucode_map.copy()
-        eff_n_lucode_map_nodata[global_landcover_nodata] = 0.0
+        eff_n_lucode_map_nodata[global_landcover_nodata] = NODATA
         reclassify_eff_n_task = task_graph.add_task(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
@@ -1730,7 +1730,7 @@ def schedule_watershed_processing(
             priority=task_id)
 
         load_n_lucode_map_copy = load_n_lucode_map.copy()
-        load_n_lucode_map_copy[global_landcover_nodata] = 0.0
+        load_n_lucode_map_copy[global_landcover_nodata] = NODATA
         load_n_raster_path = local_landcover_path.replace(
             '.tif', '_load_n.tif')
         reclassify_load_n_task = task_graph.add_task(

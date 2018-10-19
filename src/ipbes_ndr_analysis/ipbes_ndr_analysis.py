@@ -45,7 +45,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS =  max(1, multiprocessing.cpu_count())
+N_CPUS = max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
@@ -72,56 +72,57 @@ WATERSHED_PROCESSING_DIR = 'watershed_processing'
 # The following paths will be relative to the workspace directory
 LANDUSE_DIR = 'globio_landuse_scenarios'
 LANDCOVER_RASTER_PATHS = {
-    '1850': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif", 255),
-    '1900': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif", 255),
-    '1910': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif", 255),
-    '1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
-    '1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
-    '2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
-    'ESACCI_LC_L4_LCSS': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
-    'ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
-    'ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
-    'ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
-    'ssp1_he26pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
-    'ssp3_he60pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
-    'ssp5_he85pr50': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
+    'isimip_1850': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif", 255),
+    'isimip_1900': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif", 255),
+    'isimip_1910': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif", 255),
+    'isimip_1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
+    'isimip_1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
+    'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
+    'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
+    'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
+    'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
+    'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
+    'isimip_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
+    'worldclim_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
+    'worldclim_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
+    'worldclim_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
 }
 
 PRECIP_DIR = 'precip_scenarios'
 PRECIP_RASTER_PATHS = {
     # we don't have 1850 data so we'll use 1900 for 1850
-    '1850': f'{PRECIP_DIR}/precip_1900.tif',
-    '1900': f'{PRECIP_DIR}/precip_1900.tif',
-    '1910': f'{PRECIP_DIR}/precip_1910.tif',
-    '1945': f'{PRECIP_DIR}/precip_1945.tif',
-    '1980': f'{PRECIP_DIR}/precip_1980.tif',
-    '2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-    'ESACCI_LC_L4_LCSS': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-    'ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
-    'ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
-    'ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
-    'ssp1_he26pr50': f'{PRECIP_DIR}/he26pr50.tif',
-    'ssp3_he60pr50': f'{PRECIP_DIR}/he60pr50.tif',
-    'ssp5_he85pr50': f'{PRECIP_DIR}/he85pr50.tif',
+    'isimip_1850': f'{PRECIP_DIR}/precip_1900.tif',
+    'isimip_1900': f'{PRECIP_DIR}/precip_1900.tif',
+    'isimip_1910': f'{PRECIP_DIR}/precip_1910.tif',
+    'isimip_1945': f'{PRECIP_DIR}/precip_1945.tif',
+    'isimip_1980': f'{PRECIP_DIR}/precip_1980.tif',
+    'isimip_2015': f'{PRECIP_DIR}/precip_2015.tif',
+    'worldclim_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'isimip_2050_ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
+    'isimip_2050_ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
+    'isimip_2050_ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
+    'worldclim_2050_ssp1': f'{PRECIP_DIR}/he26pr50.tif',
+    'worldclim_2050_ssp3': f'{PRECIP_DIR}/he60pr50.tif',
+    'worldclim_2050_ssp5': f'{PRECIP_DIR}/he85pr50.tif',
 }
 
 AG_LOAD_DIR = 'ag_load_scenarios'
 AG_RASTER_PATHS = {
-    '1850': f'{AG_LOAD_DIR}/1850_ag_load.tif',
-    '1900': f'{AG_LOAD_DIR}/1900_ag_load.tif',
-    # 1910 has no ag loading, but 1920 did and so Becky wanted to use that
-    # for the 1910 landcover scenario
-    '1910': f'{AG_LOAD_DIR}/1920_ag_load.tif',
-    '1945': f'{AG_LOAD_DIR}/1945_ag_load.tif',
-    '1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
-    '2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
-    'ESACCI_LC_L4_LCSS': f'{AG_LOAD_DIR}/2015_ag_load.tif',
-    'ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
-    'ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
-    'ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
-    'ssp1_he26pr50': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
-    'ssp3_he60pr50': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
-    'ssp5_he85pr50': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
+    'isimip_1850': f'{AG_LOAD_DIR}/1850_ag_load.tif',
+    'isimip_1900': f'{AG_LOAD_DIR}/1900_ag_load.tif',
+    'isimip_1910': f'{AG_LOAD_DIR}/1920_ag_load.tif',
+    'isimip_1945': f'{AG_LOAD_DIR}/1945_ag_load.tif',
+    'isimip_1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
+    'isimip_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'worldclim_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'worldclim_esa_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'isimip_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
+    'isimip_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
+    'isimip_2050_ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
+    'worldclim_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
+    'worldclim_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
+    'worldclim_2050_ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
 }
 
 POPULATION_SCENARIOS_DIR = 'spatial_population_scenarios'

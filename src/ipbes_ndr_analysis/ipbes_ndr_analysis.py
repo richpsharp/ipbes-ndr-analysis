@@ -1402,6 +1402,9 @@ def schedule_watershed_processing(
         task_name='merge_watershed_dems_%s' % ws_prefix,
         priority=task_id)
 
+    masked_watershed_dem_path = watershed_dem_path.replace(
+        '.tif', '_masked.tif')
+
     centroid_geom = watershed_geometry.Centroid()
     utm_code = (math.floor((centroid_geom.GetX() + 180)/6) % 60) + 1
     lat_code = 6 if centroid_geom.GetY() > 0 else 7
@@ -1426,6 +1429,17 @@ def schedule_watershed_processing(
         task_name='project_watershed_%s' % ws_prefix,
         priority=task_id)
 
+    mask_watershed_dem_task = task_graph.add_task(
+        n_retries=5,
+        func=mask_raster_by_vector,
+        args=(
+            watershed_dem_path, local_watershed_path,
+            masked_watershed_dem_path),
+        target_path_list=[masked_watershed_dem_path],
+        dependent_task_list=[
+            reproject_watershed_task, merge_watershed_dems_task],
+        task_name='mask dem %s' % ws_prefix)
+
     base_raster_path_list = sorted(list(set(
         [os.path.join(root_data_dir, path)
          for (path, _) in list(LANDCOVER_RASTER_PATHS.values())] +
@@ -1434,7 +1448,7 @@ def schedule_watershed_processing(
          list(AG_RASTER_PATHS.values()) +
          list(POPULATION_RASTER_PATHS.values())])))
     base_raster_path_list.extend(
-        [gpw_2010_total_dens_path, watershed_dem_path])
+        [gpw_2010_total_dens_path, masked_watershed_dem_path])
 
     max_basename_length = 50
 
@@ -1489,13 +1503,25 @@ def schedule_watershed_processing(
         kwargs={
             'base_sr_wkt_list': [wgs84_sr.ExportToWkt()] * len(
                 base_raster_path_list),
-            'target_sr_wkt': epsg_srs.ExportToWkt(),
-            'vector_mask_options': {'mask_vector_path': local_watershed_path},
+            'target_sr_wkt': epsg_srs.ExportToWkt()
             },
         target_path_list=aligned_path_list,
-        dependent_task_list=[merge_watershed_dems_task],
+        dependent_task_list=[mask_watershed_dem_task],
         task_name='align resize %s' % ws_prefix,
         priority=task_id)
+
+    masked_gpw_2010_den_path = _base_to_aligned_path_op(
+        os.path.join(workspace_dir, 'masked_gpw_2010_den.tif'))
+    mask_gpw_2010_task = task_graph.add_task(
+        n_retries=5,
+        func=mask_raster_by_vector,
+        args=(
+            gpw_2010_den_aligned_path, local_watershed_path,
+            masked_gpw_2010_den_path),
+        target_path_list=[masked_gpw_2010_den_path],
+        dependent_task_list=[
+            reproject_watershed_task, align_resize_task],
+        task_name='mask gpw %s' % ws_prefix)
 
     # fill and route dem
     filled_watershed_dem_path = os.path.join(
@@ -1701,11 +1727,11 @@ def schedule_watershed_processing(
                 n_retries=5,
                 func=calculate_rural_pop,
                 args=(
-                    pixel_area_in_km2, gpw_2010_den_aligned_path,
+                    pixel_area_in_km2, masked_gpw_2010_den_path,
                     spatial_pop_scenario_rur, spatial_pop_2010_tot,
                     rural_scenario_pop_path),
                 target_path_list=[rural_scenario_pop_path],
-                dependent_task_list=[align_resize_task],
+                dependent_task_list=[align_resize_task, mask_gpw_2010_task],
                 task_name='calculate rural pop')
         else:
             rural_scenario_pop_path = None
@@ -1714,16 +1740,31 @@ def schedule_watershed_processing(
         local_landcover_path = _base_to_aligned_path_op(
             os.path.join(root_data_dir, global_landcover_path))
 
+        # mask local landcover
+        masked_local_landcover_path = local_landcover_path.replace(
+            '.tif', '_masked.tif')
+
+        mask_landcover_task = task_graph.add_task(
+            n_retries=5,
+            func=mask_raster_by_vector,
+            args=(
+                local_landcover_path, local_watershed_path,
+                masked_local_landcover_path),
+            kwargs={'target_nodata': global_landcover_nodata},
+            target_path_list=[masked_local_landcover_path],
+            dependent_task_list=[align_resize_task],
+            task_name='mask lulc %s %s' % (ws_prefix, landcover_id))
+
         eff_n_raster_path = local_landcover_path.replace(
             '.tif', '_eff_n.tif')
         reclassify_eff_n_task = task_graph.add_task(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
-                (local_landcover_path, 1), eff_n_lucode_map,
+                (masked_local_landcover_path, 1), eff_n_lucode_map,
                 eff_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[eff_n_raster_path],
-            dependent_task_list=[align_resize_task],
+            dependent_task_list=[align_resize_task, mask_landcover_task],
             task_name='reclassify_eff_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
@@ -1733,10 +1774,10 @@ def schedule_watershed_processing(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
-                (local_landcover_path, 1), load_n_lucode_map,
+                (masked_local_landcover_path, 1), load_n_lucode_map,
                 load_n_raster_path, gdal.GDT_Float32, NODATA),
             target_path_list=[load_n_raster_path],
-            dependent_task_list=[align_resize_task],
+            dependent_task_list=[align_resize_task, mask_landcover_task],
             task_name='reclasify_load_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 
@@ -1770,6 +1811,19 @@ def schedule_watershed_processing(
             dependent_task_list=[scenario_load_task, align_resize_task],
             task_name='modified_load_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
+
+        local_precip_masked_path = local_precip_path.replace(
+            '.tif', '_masked.tif')
+
+        mask_precip_task = task_graph.add_task(
+            n_retries=5,
+            func=mask_raster_by_vector,
+            args=(
+                local_precip_path, local_watershed_path,
+                local_precip_masked_path),
+            target_path_list=[local_precip_masked_path],
+            dependent_task_list=[align_resize_task],
+            task_name='mask precip %s %s' % (ws_prefix, landcover_id))
 
         # calculate eff_i
         downstream_ret_eff_path = local_landcover_path.replace(
@@ -1820,14 +1874,13 @@ def schedule_watershed_processing(
             func=aggregate_to_database,
             args=(
                 n_export_raster_path, modified_load_raster_path,
-                rural_scenario_pop_path, local_precip_path,
+                rural_scenario_pop_path, local_precip_masked_path,
                 load_n_raster_path, ag_load_path, ws_prefix,
                 landcover_id, database_lock, database_path,
                 target_touch_path),
             dependent_task_list=[
-                align_resize_task, n_export_task, modified_load_task,
-                reproject_watershed_task] + (
-                    [rural_pop_task] if rural_pop_task else []),
+                n_export_task, modified_load_task, reproject_watershed_task] +
+                ([rural_pop_task] if rural_pop_task else []),
             task_name='aggregate_result_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
 

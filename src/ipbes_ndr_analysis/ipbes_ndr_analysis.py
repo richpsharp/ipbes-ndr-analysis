@@ -1793,8 +1793,8 @@ def schedule_watershed_processing(
             func=pygeoprocessing.reclassify_raster,
             args=(
                 (masked_local_landcover_path, 1), load_n_lucode_map,
-                load_n_raster_path, gdal.GDT_Float32, NODATA),
-            target_path_list=[load_n_raster_path],
+                load_n_per_ha_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[load_n_per_ha_raster_path],
             dependent_task_list=[align_resize_task, mask_landcover_task],
             task_name='reclasify_load_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)

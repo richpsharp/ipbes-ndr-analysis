@@ -26,27 +26,9 @@ import pygeoprocessing.routing
 import ipbes_ndr_analysis_cython
 
 # set a 1GB limit for the cache
-gdal.SetCacheMax(32*2**30)
+gdal.SetCacheMax(32*2**28)
 
-
-class GdalErrorHandler(object):
-    def __init__(self):
-        self.err_level = gdal.CE_None
-        self.err_no = 0
-        self.err_msg = ''
-
-    def handler(self, err_level, err_no, err_msg):
-        self.err_level = err_level
-        self.err_no = err_no
-        self.err_msg = err_msg
-
-
-err = GdalErrorHandler()
-handler = err.handler
-gdal.PushErrorHandler(handler)
-gdal.UseExceptions()
-
-N_CPUS = max(1, multiprocessing.cpu_count())
+N_CPUS = 4 * max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999
@@ -273,24 +255,25 @@ class ClampOp(taskgraph.EncapsulatedTaskOp):
 
 
 def calculate_ag_load(
-        load_n_raster_path, ag_load_raster_path, target_ag_load_path):
+        load_n_per_ha_raster_path, ag_load_raster_path, target_ag_load_path):
     """Add the agricultural load onto the base load.
 
     Parameters:
-        load_n_raster_path (string): path to a base load raster with
+        load_n_per_ha_raster_path (string): path to a base load raster with
             `USE_AG_LOAD_ID` where the pixel should be replaced with the
             managed ag load.
         ag_load_raster_path (string): path to a raster that indicates
             what the ag load is at `USE_AG_LOAD_ID` pixels
         target_ag_load_path (string): generated raster that has the base
-            values from `load_n_raster_path` but with the USE_AG_LOAD_IDs
+            values from `load_n_per_ha_raster_path` but with the USE_AG_LOAD_IDs
             replaced by `ag_load_raster_path`.
 
     Returns:
         None.
     """
-    load_nodata = pygeoprocessing.get_raster_info(
-        ag_load_raster_path)['nodata'][0]
+    load_raster_info = pygeoprocessing.get_raster_info(
+        ag_load_raster_path)
+    load_nodata = load_raster_info['nodata'][0]
 
     def ag_load_op(base_load_n_array, ag_load_array):
         """raster calculator replace USE_AG_LOAD_ID with ag loads."""
@@ -302,10 +285,10 @@ def calculate_ag_load(
         result[ag_mask & nodata_load_mask] = 0.0
         return result
 
-    nodata = pygeoprocessing.get_raster_info(load_n_raster_path)['nodata'][0]
+    nodata = pygeoprocessing.get_raster_info(load_n_per_ha_raster_path)['nodata'][0]
 
     pygeoprocessing.raster_calculator(
-        [(load_n_raster_path, 1), (ag_load_raster_path, 1)],
+        [(load_n_per_ha_raster_path, 1), (ag_load_raster_path, 1)],
         ag_load_op, target_ag_load_path,
         gdal.GDT_Float32, nodata)
 
@@ -313,7 +296,7 @@ def calculate_ag_load(
 def aggregate_to_database(
         n_export_raster_path, n_modified_load_raster_path,
         rural_pop_raster_path, runoff_raster_path, ag_mask_raster_path,
-        load_raster_path, ws_prefix, scenario_key, database_lock,
+        load_raster_per_ha_path, ws_prefix, scenario_key, database_lock,
         target_database_path, target_touch_path):
     """Aggregate nutrient export and load and save to database.
 
@@ -330,7 +313,7 @@ def aggregate_to_database(
         runoff_raster_path (string): path to runoff index raster
         ag_mask_raster_path (string): path to a raster that indicates ag
             pixels by 999.
-        load_raster_path (string): path to complete nutrient loading raster
+        load_raster_per_ha_path (string): path to complete nutrient loading raster
         ws_prefix (string): watershed ID used to uniquely identify the
             watershed.
         scenario_key (string): used to insert in database (values like 2015
@@ -344,6 +327,11 @@ def aggregate_to_database(
 
     Returns:
         None.
+
+        n_export_raster_path, modified_load_raster_path,
+        rural_scenario_pop_path, local_precip_path, load_n_per_ha_raster_path,
+        ag_load_per_ha_path, ws_prefix, landcover_id, database_lock, database_path,
+        target_touch_path)
     """
     base_raster_info = pygeoprocessing.get_raster_info(n_export_raster_path)
     local_bb = base_raster_info['bounding_box']
@@ -438,11 +426,16 @@ def aggregate_to_database(
         pygeoprocessing.get_raster_info(ag_mask_raster_path)['pixel_size']))
 
     total_ag_load = 0.0
-    ag_load_nodata = pygeoprocessing.get_raster_info(
-        load_raster_path)['nodata'][0]
-    for _, data_block in pygeoprocessing.iterblocks(load_raster_path):
+    load_raster_info = pygeoprocessing.get_raster_info(
+        load_raster_per_ha_path)
+    ag_load_nodata = load_raster_info['nodata'][0]
+    ag_ha_per_cell = abs(
+        load_raster_info['pixel_size'][0] *
+        load_raster_info['pixel_size'][1]) * 0.0001
+    for _, data_block in pygeoprocessing.iterblocks(load_raster_per_ha_path):
         valid_mask = ~numpy.isclose(data_block, ag_load_nodata)
         total_ag_load += numpy.sum(data_block[valid_mask])
+    total_ag_load *= ag_ha_per_cell
 
     # Table format
     # CREATE TABLE IF NOT EXISTS nutrient_export (
@@ -555,6 +548,7 @@ def modified_load(
     Returns:
         None.
     """
+    load_raster_info = pygeoprocessing.get_raster_info(load_raster_path)
     runoff_nodata = pygeoprocessing.get_raster_info(
         runoff_proxy_path)['nodata'][0]
     runoff_sum = 0.0
@@ -569,8 +563,10 @@ def modified_load(
     if runoff_count > 0:
         avg_runoff = runoff_sum / runoff_count
 
-    load_nodata = pygeoprocessing.get_raster_info(
-        load_raster_path)['nodata'][0]
+    load_nodata = load_raster_info['nodata'][0]
+    cell_area_ha = abs(
+        load_raster_info['pixel_size'][0] *
+        load_raster_info['pixel_size'][1]) * 0.0001
 
     def _modified_load_op(load_array, runoff_array):
         """Multiply arrays and divide by average runoff."""
@@ -579,7 +575,8 @@ def modified_load(
         valid_mask = (
             (load_array != load_nodata) & (runoff_array != runoff_nodata))
         result[valid_mask] = (
-            load_array[valid_mask] * runoff_array[valid_mask] / avg_runoff)
+            cell_area_ha * load_array[valid_mask] *
+            runoff_array[valid_mask] / avg_runoff)
         return result
 
     pygeoprocessing.raster_calculator(
@@ -1731,15 +1728,15 @@ def schedule_watershed_processing(
 
         load_n_lucode_map_copy = load_n_lucode_map.copy()
         load_n_lucode_map_copy[global_landcover_nodata] = NODATA
-        load_n_raster_path = local_landcover_path.replace(
-            '.tif', '_load_n.tif')
+        load_n_per_ha_raster_path = local_landcover_path.replace(
+            '.tif', '_load_n_per_ha.tif')
         reclassify_load_n_task = task_graph.add_task(
             n_retries=5,
             func=pygeoprocessing.reclassify_raster,
             args=(
                 (local_landcover_path, 1), load_n_lucode_map_copy,
-                load_n_raster_path, gdal.GDT_Float32, NODATA),
-            target_path_list=[load_n_raster_path],
+                load_n_per_ha_raster_path, gdal.GDT_Float32, NODATA),
+            target_path_list=[load_n_per_ha_raster_path],
             dependent_task_list=[align_resize_task],
             task_name='reclasify_load_n_%s_%s' % (ws_prefix, landcover_id),
             priority=task_id)
@@ -1747,14 +1744,14 @@ def schedule_watershed_processing(
         local_ag_load_path = _base_to_aligned_path_op(
             os.path.join(root_data_dir, AG_RASTER_PATHS[landcover_id]))
 
-        ag_load_path = local_landcover_path.replace(
-            '.tif', '_ag_load_n.tif')
+        ag_load_per_ha_path = local_landcover_path.replace(
+            '.tif', '_ag_load_n_per_ha.tif')
         scenario_load_task = task_graph.add_task(
             n_retries=5,
             func=calculate_ag_load,
             args=(
-                load_n_raster_path, local_ag_load_path, ag_load_path),
-            target_path_list=[ag_load_path],
+                load_n_per_ha_raster_path, local_ag_load_path, ag_load_per_ha_path),
+            target_path_list=[ag_load_per_ha_path],
             dependent_task_list=[
                 reclassify_load_n_task, align_resize_task],
             task_name='scenario_load_%s_%s' % (ws_prefix, landcover_id),
@@ -1769,7 +1766,7 @@ def schedule_watershed_processing(
             n_retries=5,
             func=modified_load,
             args=(
-                ag_load_path, local_precip_path, modified_load_raster_path),
+                ag_load_per_ha_path, local_precip_path, modified_load_raster_path),
             target_path_list=[modified_load_raster_path],
             dependent_task_list=[scenario_load_task, align_resize_task],
             task_name='modified_load_%s_%s' % (ws_prefix, landcover_id),
@@ -1825,7 +1822,7 @@ def schedule_watershed_processing(
             args=(
                 n_export_raster_path, modified_load_raster_path,
                 rural_scenario_pop_path, local_precip_path,
-                load_n_raster_path, ag_load_path, ws_prefix,
+                load_n_per_ha_raster_path, ag_load_per_ha_path, ws_prefix,
                 landcover_id, database_lock, database_path,
                 target_touch_path),
             dependent_task_list=[

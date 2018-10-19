@@ -542,6 +542,51 @@ def calc_ic(d_up_array, d_dn_array):
     return result
 
 
+def modified_load(
+        load_raster_path, runoff_proxy_path, target_modified_load_path):
+    """Calculate Modified load (eq 1)
+
+    Parameters:
+        load_raster_path (str): path to load raster.
+        runoff_proxy_path (str): path to runoff index.
+        target_modified_load_path (str): path to calculated modified load
+            raster.
+
+    Returns:
+        None.
+    """
+    runoff_nodata = pygeoprocessing.get_raster_info(
+        runoff_proxy_path)['nodata'][0]
+    runoff_sum = 0.0
+    runoff_count = 0
+
+    for _, raster_block in pygeoprocessing.iterblocks(runoff_proxy_path):
+        valid_mask = raster_block != runoff_nodata
+        runoff_sum += numpy.sum(raster_block[valid_mask])
+        runoff_count += numpy.count_nonzero(raster_block)
+
+    avg_runoff = 1.0
+    if runoff_count > 0:
+        avg_runoff = runoff_sum / runoff_count
+
+    load_nodata = pygeoprocessing.get_raster_info(
+        load_raster_path)['nodata'][0]
+
+    def _modified_load_op(load_array, runoff_array):
+        """Multiply arrays and divide by average runoff."""
+        result = numpy.empty_like(load_array)
+        result[:] = NODATA
+        valid_mask = (
+            (load_array != load_nodata) & (runoff_array != runoff_nodata))
+        result[valid_mask] = (
+            load_array[valid_mask] * runoff_array[valid_mask] / avg_runoff)
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [(load_raster_path, 1), (runoff_proxy_path, 1)], _modified_load_op,
+        target_modified_load_path, gdal.GDT_Float32, NODATA)
+
+
 def mult_arrays(
         target_raster_path, gdal_type, target_nodata, raster_path_list):
     """Multiply arrays and be careful of nodata values."""
@@ -1759,10 +1804,9 @@ def schedule_watershed_processing(
             os.path.join(root_data_dir, PRECIP_RASTER_PATHS[landcover_id]))
         modified_load_task = task_graph.add_task(
             n_retries=5,
-            func=mult_arrays,
+            func=modified_load,
             args=(
-                modified_load_raster_path, gdal.GDT_Float32,
-                NODATA, [ag_load_path, local_precip_path]),
+                ag_load_path, local_precip_path, modified_load_raster_path),
             target_path_list=[modified_load_raster_path],
             dependent_task_list=[scenario_load_task, align_resize_task],
             task_name='modified_load_%s_%s' % (ws_prefix, landcover_id),

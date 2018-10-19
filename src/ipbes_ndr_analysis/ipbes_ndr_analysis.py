@@ -26,7 +26,7 @@ import pygeoprocessing.routing
 import ipbes_ndr_analysis_cython
 
 # set a 1GB limit for the cache
-gdal.SetCacheMax(32*2**28)
+gdal.SetCacheMax(32*2**29)
 
 class GdalErrorHandler(object):
     def __init__(self):
@@ -45,7 +45,7 @@ handler = err.handler
 gdal.PushErrorHandler(handler)
 gdal.UseExceptions()
 
-N_CPUS = 4 * max(1, multiprocessing.cpu_count())
+N_CPUS =  max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1
 IC_NODATA = -9999

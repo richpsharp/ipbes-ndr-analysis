@@ -28,6 +28,23 @@ import ipbes_ndr_analysis_cython
 # set a 1GB limit for the cache
 gdal.SetCacheMax(32*2**28)
 
+class GdalErrorHandler(object):
+    def __init__(self):
+        self.err_level = gdal.CE_None
+        self.err_no = 0
+        self.err_msg = ''
+
+    def handler(self, err_level, err_no, err_msg):
+        self.err_level = err_level
+        self.err_no = err_no
+        self.err_msg = err_msg
+
+
+err = GdalErrorHandler()
+handler = err.handler
+gdal.PushErrorHandler(handler)
+gdal.UseExceptions()
+
 N_CPUS = 4 * max(1, multiprocessing.cpu_count())
 TASKGRAPH_REPORTING_FREQUENCY = 5.0
 NODATA = -1

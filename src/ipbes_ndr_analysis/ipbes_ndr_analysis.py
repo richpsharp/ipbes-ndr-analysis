@@ -594,7 +594,7 @@ def modified_load(
 
     def _modified_load_op(load_array, runoff_array):
         """Multiply arrays and divide by average runoff."""
-        result = numpy.empty_like(load_array)
+        result = numpy.empty(load_array.shape, dtype=numpy.float32)
         result[:] = NODATA
         valid_mask = (
             (load_array != load_nodata) & (runoff_array != runoff_nodata))
@@ -604,10 +604,14 @@ def modified_load(
                 result[valid_mask] = (
                     cell_area_ha * load_array[valid_mask] *
                     runoff_array[valid_mask] / avg_runoff)
+                if any((result[valid_mask] > 1e25) |
+                       (result[valid_mask] < -1e25)):
+                    raise ValueError("bad result")
             except:
                 LOGGER.error(
-                    "warning or error in modified load %s %s %s",
-                    avg_runoff, cell_area_ha, runoff_array[valid_mask])
+                    "warning or error in modified load %s %s %s %s %s %s",
+                    avg_runoff, cell_area_ha, runoff_array[valid_mask],
+                    result[valid_mask], load_raster_path, runoff_proxy_path)
         return result
 
     pygeoprocessing.raster_calculator(

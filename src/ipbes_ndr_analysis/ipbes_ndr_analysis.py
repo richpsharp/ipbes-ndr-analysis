@@ -1,5 +1,6 @@
 # coding=UTF-8
 """Script to manage NDR runs for IPBES project."""
+import warnings
 import time
 import zipfile
 import sys
@@ -597,9 +598,16 @@ def modified_load(
         result[:] = NODATA
         valid_mask = (
             (load_array != load_nodata) & (runoff_array != runoff_nodata))
-        result[valid_mask] = (
-            cell_area_ha * load_array[valid_mask] *
-            runoff_array[valid_mask] / avg_runoff)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('error')
+            try:
+                result[valid_mask] = (
+                    cell_area_ha * load_array[valid_mask] *
+                    runoff_array[valid_mask] / avg_runoff)
+            except:
+                LOGGER.error(
+                    "warning or error in modified load %s %s %s",
+                    avg_runoff, cell_area_ha, runoff_array[valid_mask])
         return result
 
     pygeoprocessing.raster_calculator(

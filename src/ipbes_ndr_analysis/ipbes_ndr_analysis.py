@@ -583,7 +583,7 @@ def modified_load(
         runoff_sum += numpy.sum(raster_block[valid_mask])
         runoff_count += numpy.count_nonzero(raster_block)
     avg_runoff = 1.0
-    if runoff_count > 0:
+    if runoff_count > 0 and runoff_sum > 0:
         avg_runoff = runoff_sum / runoff_count
 
     load_nodata = load_raster_info['nodata'][0]

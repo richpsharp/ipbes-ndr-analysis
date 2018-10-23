@@ -573,10 +573,9 @@ def modified_load(
     runoff_count = 0
 
     for _, raster_block in pygeoprocessing.iterblocks(runoff_proxy_path):
-        valid_mask = raster_block != runoff_nodata
+        valid_mask = ~numpy.isclose(raster_block, runoff_nodata)
         runoff_sum += numpy.sum(raster_block[valid_mask])
         runoff_count += numpy.count_nonzero(raster_block)
-
     avg_runoff = 1.0
     if runoff_count > 0:
         avg_runoff = runoff_sum / runoff_count
@@ -1314,19 +1313,6 @@ def aggregate_to_rasters(database_path, degree_raster_dir):
     cursor = conn.cursor()
 
     for scenario_key in AG_RASTER_PATHS:
-        # CREATE TABLE IF NOT EXISTS nutrient_export (
-        #     ws_prefix_key TEXT NOT NULL,
-        #     scenario_key TEXT NOT NULL,
-        #     nutrient_export REAL NOT NULL,
-        #     modified_load REAL NOT NULL,
-        #     rural_pop_count REAL NOT NULL,
-        #     average_runoff_coefficient REAL NOT NULL,
-        #     ag_area REAL NOT NULL,
-        #     total_ag_load REAL NOT NULL,
-        #     grid_aggregation_pickle BLOB NOT NULL,
-        #     PRIMARY KEY (ws_prefix_key, scenario_key)
-        # );
-
         cursor.execute(
             """SELECT grid_aggregation_pickle FROM nutrient_export
             WHERE (scenario_key = ?)""", (scenario_key,))
@@ -1809,7 +1795,8 @@ def schedule_watershed_processing(
             n_retries=5,
             func=calculate_ag_load,
             args=(
-                load_n_per_ha_raster_path, local_ag_load_path, ag_load_per_ha_path),
+                load_n_per_ha_raster_path, local_ag_load_path,
+                ag_load_per_ha_path),
             target_path_list=[ag_load_per_ha_path],
             dependent_task_list=[
                 reclassify_load_n_task, align_resize_task],
@@ -1825,7 +1812,8 @@ def schedule_watershed_processing(
             n_retries=5,
             func=modified_load,
             args=(
-                ag_load_per_ha_path, local_precip_path, modified_load_raster_path),
+                ag_load_per_ha_path, local_precip_path,
+                modified_load_raster_path),
             target_path_list=[modified_load_raster_path],
             dependent_task_list=[scenario_load_task, align_resize_task],
             task_name='modified_load_%s_%s' % (ws_prefix, landcover_id),
@@ -1833,7 +1821,6 @@ def schedule_watershed_processing(
 
         local_precip_masked_path = local_precip_path.replace(
             '.tif', '_masked.tif')
-
         mask_precip_task = task_graph.add_task(
             n_retries=5,
             func=mask_raster_by_vector,

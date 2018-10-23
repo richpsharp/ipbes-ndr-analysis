@@ -573,7 +573,13 @@ def modified_load(
     runoff_count = 0
 
     for _, raster_block in pygeoprocessing.iterblocks(runoff_proxy_path):
-        valid_mask = ~numpy.isclose(raster_block, runoff_nodata)
+        # this complicated call ensures we don't end up with some garbage
+        # precipitation value like what we're getting with
+        # he26pr50.
+        valid_mask = (
+            ~numpy.isclose(raster_block, runoff_nodata) &
+            (raster_block >= 0) &
+            (raster_block < 1e7))
         runoff_sum += numpy.sum(raster_block[valid_mask])
         runoff_count += numpy.count_nonzero(raster_block)
     avg_runoff = 1.0

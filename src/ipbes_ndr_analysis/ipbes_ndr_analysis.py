@@ -595,9 +595,10 @@ def modified_load(
     def _modified_load_op(load_array, runoff_array):
         """Multiply arrays and divide by average runoff."""
         result = numpy.empty(load_array.shape, dtype=numpy.float32)
-        result[:] = NODATA
+        result[:] = 1
         valid_mask = (
-            (load_array != load_nodata) & (runoff_array != runoff_nodata))
+            ~numpy.isclose(load_array, load_nodata) &
+            ~numpy.isclose(runoff_array, runoff_nodata))
         with warnings.catch_warnings():
             warnings.filterwarnings('error')
             try:

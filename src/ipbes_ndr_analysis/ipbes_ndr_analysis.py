@@ -1470,7 +1470,7 @@ def schedule_watershed_processing(
     base_raster_path_list.extend(
         [gpw_2010_total_dens_path, masked_watershed_dem_path])
 
-    max_basename_length = 50
+    max_basename_length = 40
 
     def _base_to_aligned_path_op(base_path):
         """Convert global raster path to local."""

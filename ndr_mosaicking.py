@@ -31,6 +31,7 @@ NDR_DIRECTORY = os.path.join(
 
 # degree is 110570 at the Equator and we want 300m pixels
 MOSAIC_DEGREE_CELL_SIZE = 300.0 / 110570
+"""
 RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp1_n_export.tif',
     'ssp3_n_export.tif',
@@ -67,6 +68,17 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp1_2050_ag_load_aligned.tif',
     'ssp3_2050_ag_load_aligned.tif',
     'ssp5_2050_ag_load_aligned.tif')
+"""
+
+RASTER_SUFFIXES_TO_AGGREGATE = (
+    'isimip_2015_n_export.tif',
+    'worldclim_2015_n_export.tif',
+    'esa_2015_n_export.tif',
+    'isimip_2015_modified_load.tif',
+    'worldclim_2015_modified_load.tif',
+    'esa_2015_modified_load.tif',
+    '2015_rural_total_pop_aligned.tif',
+    '2015_ag_load_aligned.tif')
 
 _WGS84_SRS = osr.SpatialReference()
 _WGS84_SRS.ImportFromEPSG(4326)

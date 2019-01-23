@@ -90,21 +90,29 @@ def main():
 
             base_raster_info = pygeoprocessing.get_raster_info(matching_path)
             target_raster_path = os.path.join(WORKSPACE_DIR, raster_suffix)
+            target_token_complete_path = os.path.join(
+                WORKSPACE_DIR, f'''{
+                    os.path.splitext(target_raster_path)[0]}_{
+                        MOSAIC_CELL_SIZE}.TOKEN''')
             LOGGER.debug(target_raster_path)
             make_empty_wgs84_raster(
                 MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
-                base_raster_info['datatype'], target_raster_path)
+                base_raster_info['datatype'], target_raster_path,
+                target_token_complete_path)
         LOGGER.info("found all the raster suffixes in %s", dirpath)
         break
 
 
 def make_empty_wgs84_raster(
-        cell_size, nodata_value, datatype, target_raster_path):
+        cell_size, nodata_value, target_datatype, target_raster_path,
+        target_token_complete_path):
     """Make a big empty raster in WGS84 projection.
 
     Parameters:
         cell_size (float): this is the desired cell size in WSG84 degree
             units.
+        nodata_value (float): desired nodata avlue of target raster
+        target_datatype (gdal enumerated type): desired target datatype.
         target_raster_path (str): this is the target raster that will cover
             [-180, 180), [90, -90) with cell size units with y direction being
             negative.
@@ -128,19 +136,23 @@ def make_empty_wgs84_raster(
     wgs84_srs.ImportFromEPSG(4326)
 
     target_raster = gtiff_driver.Create(
-        target_raster_path, n_cols, n_rows, 1, datatype,
+        target_raster_path, n_cols, n_rows, 1, target_datatype,
         options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
     target_raster.SetProjection(wgs84_srs.ExportToWkt())
     target_raster.SetGeoTransform(geotransform)
-
     target_band = target_raster.GetRasterBand(1)
     target_band.SetNoDataValue(nodata_value)
     target_band.Fill(nodata_value)
     target_band.FlushCache()
     target_band = None
     target_raster = None
+
+    target_raster = gdal.OpenEx(target_raster_path, gdal.OF_Raster)
+    if target_raster:
+        with open(target_token_complete_path, 'w') as target_token_file:
+            target_token_file.write('complete!')
 
 
 if __name__ == '__main__':

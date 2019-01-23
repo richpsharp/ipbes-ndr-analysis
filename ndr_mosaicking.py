@@ -63,6 +63,10 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp3_2050_ag_load_aligned.tif',
     'ssp5_2050_ag_load_aligned.tif')
 
+_WGS84_SRS = osr.SpatialReference()
+_WGS84_SRS.ImportFromEPSG(4326)
+WSGS84_WKT = _WGS84_SRS.ExportToWkt()
+
 
 def main():
     """Entry point."""
@@ -75,41 +79,74 @@ def main():
         pass
 
     global_raster_task_path_map = {}
-    for (dirpath, dirnames, filenames) in os.walk(NDR_DIRECTORY):
-        if dirnames:
-            continue
-        for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
+    leaf_directory_list = [
+        (dirpath, filenames) for (dirpath, dirnames, filenames) in os.walk(
+            NDR_DIRECTORY) if not dirnames]
+
+    sample_dirpath, sample_filenames = leaf_directory_list[0]
+    for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
+        try:
+            base_raster_path = next(iter(
+                (os.path.join(sample_dirpath, file_path)
+                    for file_path in sample_filenames
+                    if file_path.endswith(raster_suffix))))
+        except StopIteration:
+            raise ValueError(
+                "Expected to find %s in %s but not found" % (
+                    raster_suffix, sample_dirpath))
+
+        base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+        target_raster_path = os.path.join(WORKSPACE_DIR, raster_suffix)
+        target_token_complete_path = f'''{
+            os.path.splitext(target_raster_path)[0]}_{
+                MOSAIC_DEGREE_CELL_SIZE}.TOKEN'''
+        LOGGER.debug(target_raster_path)
+        make_empty_raster_task = task_graph.add_task(
+            func=make_empty_wgs84_raster,
+            args=(
+                MOSAIC_DEGREE_CELL_SIZE, base_raster_info['nodata'][0],
+                base_raster_info['datatype'], target_raster_path,
+                target_token_complete_path),
+            ignore_path_list=[target_raster_path],
+            target_path_list=[target_token_complete_path],
+            task_name=f'create empty global {raster_suffix}')
+        global_raster_task_path_map[raster_suffix] = (
+            make_empty_raster_task, target_raster_path)
+    LOGGER.info("found all the raster suffixes in %s", sample_dirpath)
+
+    for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
+        for dirpath, filenames in leaf_directory_list:
             try:
-                matching_path = next(iter(
-                    (os.path.join(dirpath, file_path) for file_path in filenames
-                     if file_path.endswith(raster_suffix))))
+                base_raster_path = next(iter(
+                    (os.path.join(dirpath, file_path)
+                        for file_path in filenames
+                        if file_path.endswith(raster_suffix))))
             except StopIteration:
                 raise ValueError(
                     "Expected to find %s in %s but not found" % (
-                        raster_suffix, dirpath))
+                        raster_suffix, sample_dirpath))
 
-            base_raster_info = pygeoprocessing.get_raster_info(matching_path)
-            target_raster_path = os.path.join(WORKSPACE_DIR, raster_suffix)
-            target_token_complete_path = f'''{
-                os.path.splitext(target_raster_path)[0]}_{
-                    MOSAIC_DEGREE_CELL_SIZE}.TOKEN'''
-            LOGGER.debug(target_raster_path)
-            make_empty_raster_task = task_graph.add_task(
-                func=make_empty_wgs84_raster,
+            target_wgs84_raster_path = f'''{
+                os.path.splitext(base_raster_path)[0]}_wgs84.tif'''
+            wgs84_project_task = task_graph.add_task(
+                func=pygeoprocessing.warp_raster,
                 args=(
-                    MOSAIC_DEGREE_CELL_SIZE, base_raster_info['nodata'][0],
-                    base_raster_info['datatype'], target_raster_path,
-                    target_token_complete_path),
-                ignore_path_list=[target_raster_path],
-                target_path_list=[target_token_complete_path],
-                task_name=f'create empty global {raster_suffix}')
-            global_raster_task_path_map[raster_suffix] = (
-                make_empty_raster_task, target_raster_path)
-        LOGGER.info("found all the raster suffixes in %s", dirpath)
-        break
+                    base_raster_path, MOSAIC_DEGREE_CELL_SIZE,
+                    target_raster_path, 'near'),
+                kwargs={'target_sr_wkt': WSGS84_WKT},
+                target_path_list=[target_wgs84_raster_path],
+                dependent_task_list=[
+                    global_raster_task_path_map[raster_suffix][0]],
+                task_name=f'''wgs84 project {
+                    os.path.basename(base_raster_path)}''')
+            break
 
     task_graph.close()
     task_graph.join()
+
+
+def mosaic_base_into_target
+
 
 
 def make_empty_wgs84_raster(
@@ -141,15 +178,12 @@ def make_empty_wgs84_raster(
 
     geotransform = (-180.0, cell_size, 0.0, 90.0, 0, -cell_size)
 
-    wgs84_srs = osr.SpatialReference()
-    wgs84_srs.ImportFromEPSG(4326)
-
     target_raster = gtiff_driver.Create(
         target_raster_path, n_cols, n_rows, 1, target_datatype,
         options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
-    target_raster.SetProjection(wgs84_srs.ExportToWkt())
+    target_raster.SetProjection(WSGS84_WKT)
     target_raster.SetGeoTransform(geotransform)
     target_band = target_raster.GetRasterBand(1)
     target_band.SetNoDataValue(nodata_value)

@@ -212,6 +212,7 @@ def mosaic_base_into_target(
     target_x_off = int((base_gt[0] - target_gt[0]) / target_gt[1])
     target_y_off = int((base_gt[3] - target_gt[3]) / target_gt[5])
 
+    LOGGER.debug("mosaic offsets: %d %d %s %s", target_x_off, target_y_off, base_gt, target_gt)
     for offset_dict, band_data in pygeoprocessing.iterblocks(
             (base_raster_path, 1)):
         target_block = target_band.ReadAsArray(

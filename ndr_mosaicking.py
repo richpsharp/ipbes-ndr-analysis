@@ -9,6 +9,9 @@ from osgeo import osr
 import pygeoprocessing
 import taskgraph
 
+# set a 1GB limit for the cache
+gdal.SetCacheMax(32*2**29)
+
 WORKSPACE_DIR = 'mosaic_workspace'
 N_WORKERS = 16
 TASKGRAPH_UPDATE_INTERVAL = 5.0

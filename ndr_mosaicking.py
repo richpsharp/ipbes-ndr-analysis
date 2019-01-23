@@ -98,6 +98,7 @@ def main():
                     MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
                     base_raster_info['datatype'], target_raster_path,
                     target_token_complete_path),
+                ignore_path_list=[target_raster_path],
                 target_path_list=[target_token_complete_path],
                 task_name=f'create empty global {raster_suffix}')
             global_raster_task_path_map[raster_suffix] = (

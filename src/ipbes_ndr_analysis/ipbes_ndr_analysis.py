@@ -1154,11 +1154,19 @@ def main(raw_iam_token_path, raw_workspace_dir):
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
+        LOGGER.debug(watershed_basename)
+        if watershed_basename != 'as_bas_15s_beta':
+            LOGGER.debug("skipping %s", watershed_basename)
+            continue
         watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         for watershed_feature in watershed_layer:
             watershed_fid = watershed_feature.GetFID()
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
+            if (ws_prefix != 'ws_as_bas_15s_beta_299647' and
+                    ws_prefix != 'ws_as_bas_15s_beta_311723'):
+                continue
+            LOGGER.debug('DOINT IT %s', ws_prefix)
             if ws_prefix in scheduled_watershed_prefixes:
                 raise ValueError('%s has already been scheduled', ws_prefix)
             scheduled_watershed_prefixes.add(ws_prefix)

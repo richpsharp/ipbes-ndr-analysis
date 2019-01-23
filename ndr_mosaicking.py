@@ -135,7 +135,8 @@ def main():
             wgs84_project_task = task_graph.add_task(
                 func=pygeoprocessing.warp_raster,
                 args=(
-                    base_raster_path, MOSAIC_DEGREE_CELL_SIZE,
+                    base_raster_path,
+                    (MOSAIC_DEGREE_CELL_SIZE, -MOSAIC_DEGREE_CELL_SIZE),
                     target_raster_path, 'near'),
                 kwargs={'target_sr_wkt': WSGS84_WKT},
                 target_path_list=[target_wgs84_raster_path],

@@ -218,6 +218,9 @@ def mosaic_base_into_target(
     target_band = None
     target_raster = None
 
+    with open(target_token_complete_path, 'w') as token_file:
+        token_file.write('complete!')
+
 
 def make_empty_wgs84_raster(
         cell_size, nodata_value, target_datatype, target_raster_path,

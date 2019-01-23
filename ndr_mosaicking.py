@@ -1,4 +1,5 @@
 """Script to mosaic NDR results into single rasters."""
+import sys
 import logging
 import os
 

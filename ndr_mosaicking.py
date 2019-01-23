@@ -132,7 +132,7 @@ def make_empty_wgs84_raster(
         options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
-    target_raster.SetProjection(wgs84_srs)
+    target_raster.SetProjection(wgs84_srs.ExportToWkt())
     target_raster.SetGeoTransform(geotransform)
 
     target_band = target_raster.GetRasterBand(1)

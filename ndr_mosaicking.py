@@ -1,4 +1,5 @@
 """Script to mosaic NDR results into single rasters."""
+import time
 import sys
 import logging
 import os
@@ -147,7 +148,9 @@ def make_empty_wgs84_raster(
         target_raster_path, n_cols, n_rows, 1, target_datatype,
         options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'),
+        callback=_make_logger_callback(
+            f'creating raster {target_raster_path} %.1f%% complete'))
     target_raster.SetProjection(wgs84_srs.ExportToWkt())
     target_raster.SetGeoTransform(geotransform)
     target_band = target_raster.GetRasterBand(1)
@@ -161,6 +164,46 @@ def make_empty_wgs84_raster(
     if target_raster:
         with open(target_token_complete_path, 'w') as target_token_file:
             target_token_file.write('complete!')
+
+
+def _make_logger_callback(message):
+    """Build a timed logger callback that prints ``message`` replaced.
+
+    Parameters:
+        message (string): a string that expects 2 placement %% variables,
+            first for % complete from ``df_complete``, second from
+            ``p_progress_arg[0]``.
+
+    Returns:
+        Function with signature:
+            logger_callback(df_complete, psz_message, p_progress_arg)
+
+    """
+    def logger_callback(df_complete, _, p_progress_arg):
+        """Argument names come from the GDAL API for callbacks."""
+        try:
+            current_time = time.time()
+            if ((current_time - logger_callback.last_time) > 5.0 or
+                    (df_complete == 1.0 and
+                     logger_callback.total_time >= 5.0)):
+                # In some multiprocess applications I was encountering a
+                # ``p_progress_arg`` of None. This is unexpected and I suspect
+                # was an issue for some kind of GDAL race condition. So I'm
+                # guarding against it here and reporting an appropriate log
+                # if it occurs.
+                if p_progress_arg:
+                    LOGGER.info(message, df_complete * 100, p_progress_arg[0])
+                else:
+                    LOGGER.info(
+                        'p_progress_arg is None df_complete: %s, message: %s',
+                        df_complete, message)
+                logger_callback.last_time = current_time
+                logger_callback.total_time += current_time
+        except AttributeError:
+            logger_callback.last_time = time.time()
+            logger_callback.total_time = 0.0
+
+    return logger_callback
 
 
 if __name__ == '__main__':

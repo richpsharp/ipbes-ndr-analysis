@@ -90,7 +90,7 @@ def main():
 
             base_raster_info = pygeoprocessing.get_raster_info(matching_path)
             target_raster_path = os.path.join(WORKSPACE_DIR, raster_suffix)
-            LOGGER.debug(raster_suffix)
+            LOGGER.debug(target_raster_path)
             make_empty_wgs84_raster(
                 MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
                 base_raster_info['datatype'], target_raster_path)
@@ -138,6 +138,9 @@ def make_empty_wgs84_raster(
     target_band = target_raster.GetRasterBand(1)
     target_band.SetNoDataValue(nodata_value)
     target_band.Fill(nodata_value)
+    target_band.FlushCache()
+    target_band = None
+    target_raster = None
 
 
 if __name__ == '__main__':

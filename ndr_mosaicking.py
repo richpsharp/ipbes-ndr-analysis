@@ -12,7 +12,7 @@ import pygeoprocessing
 import taskgraph
 
 # set a 1GB limit for the cache
-gdal.SetCacheMax(32*2**29)
+gdal.SetCacheMax(32*2**27)
 
 WORKSPACE_DIR = 'mosaic_workspace'
 N_WORKERS = multiprocessing.cpu_count()

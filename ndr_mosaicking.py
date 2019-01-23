@@ -3,6 +3,7 @@ import time
 import sys
 import logging
 import os
+import multiprocessing
 
 from osgeo import gdal
 from osgeo import osr
@@ -13,7 +14,7 @@ import taskgraph
 gdal.SetCacheMax(32*2**29)
 
 WORKSPACE_DIR = 'mosaic_workspace'
-N_WORKERS = 16
+N_WORKERS = multiprocessing.cpu_count()
 TASKGRAPH_UPDATE_INTERVAL = 5.0
 
 logging.basicConfig(

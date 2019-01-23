@@ -176,7 +176,6 @@ def main():
                     os.path.basename(target_wgs84_raster_path)}''')
             # this ensures that a mosiac will happen one at a time
             previous_project_task_list = [mosiac_task]
-            break
 
     task_graph.close()
     task_graph.join()

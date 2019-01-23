@@ -71,7 +71,7 @@ def main():
     #    WORKSPACE_DIR, N_WORKERS, TASKGRAPH_UPDATE_INTERVAL)
 
     try:
-        os.path.makedirs(WORKSPACE_DIR)
+        os.makedirs(WORKSPACE_DIR)
     except OSError:
         pass
 

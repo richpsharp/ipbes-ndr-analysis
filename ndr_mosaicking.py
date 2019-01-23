@@ -3,6 +3,8 @@ import sys
 import logging
 import os
 
+from osgeo import gdal
+from osgeo import osr
 import pygeoprocessing
 import taskgraph
 
@@ -21,6 +23,7 @@ LOGGER = logging.getLogger(__name__)
 NDR_DIRECTORY = os.path.join(
     'ipbes_ndr_workspace', 'watershed_processing')
 
+MOSAIC_CELL_SIZE = 1.0
 RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp1_n_export.tif',
     'ssp3_n_export.tif',
@@ -67,6 +70,11 @@ def main():
     #task_graph = taskgraph.TaskGraph(
     #    WORKSPACE_DIR, N_WORKERS, TASKGRAPH_UPDATE_INTERVAL)
 
+    try:
+        os.path.makedirs(WORKSPACE_DIR)
+    except OSError:
+        pass
+
     for (dirpath, dirnames, filenames) in os.walk(NDR_DIRECTORY):
         if dirnames:
             continue
@@ -79,8 +87,57 @@ def main():
                 raise ValueError(
                     "Expected to find %s in %s but not found" % (
                         raster_suffix, dirpath))
-        LOGGER.info("found all the raster suffixes in %d", dirpath)
+
+            base_raster_info = pygeoprocessing.get_raster_info(matching_path)
+            target_raster_path = os.path.join(
+                WORKSPACE_DIR, raster_suffix)
+            make_empty_wgs84_raster(
+                MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
+                base_raster_info['datatype'], target_raster_path)
+        LOGGER.info("found all the raster suffixes in %s", dirpath)
         break
+
+
+def make_empty_wgs84_raster(
+        cell_size, nodata_value, datatype, target_raster_path):
+    """Make a big empty raster in WGS84 projection.
+
+    Parameters:
+        cell_size (float): this is the desired cell size in WSG84 degree
+            units.
+        target_raster_path (str): this is the target raster that will cover
+            [-180, 180), [90, -90) with cell size units with y direction being
+            negative.
+
+    Returns:
+        None.
+
+    """
+    gtiff_driver = gdal.GetDriverByName('GTiff')
+    try:
+        os.makedirs(os.path.dirname(target_raster_path))
+    except OSError:
+        pass
+
+    n_cols = int(360.0 / cell_size)
+    n_rows = int(180.0 / cell_size)
+
+    geotransform = (-180.0, cell_size, 0.0, 90.0, 0, -cell_size)
+
+    wgs84_srs = osr.SpatialReference()
+    wgs84_srs.ImportFromEPSG(4326)
+
+    target_raster = gtiff_driver.Create(
+        target_raster_path, n_cols, n_rows, 1, datatype,
+        options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+    target_raster.SetProjection(wgs84_srs)
+    target_raster.SetGeoTransform(geotransform)
+
+    target_band = target_raster.GetRasterBand(1)
+    target_band.SetNoDataValue(nodata_value)
+    target_band.Fill(nodata_value)
 
 
 if __name__ == '__main__':

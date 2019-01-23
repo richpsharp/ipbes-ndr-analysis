@@ -75,10 +75,11 @@ def main():
         if dirnames:
             continue
         for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
-            matching_path = next(iter(
-                (os.path.join(dirpath, file_path) for file_path in filenames
-                 if file_path.endswith(raster_suffix))))
-            if not matching_path:
+            try:
+                matching_path = next(iter(
+                    (os.path.join(dirpath, file_path) for file_path in filenames
+                     if file_path.endswith(raster_suffix))))
+            except StopIteration:
                 raise ValueError(
                     "Expected to find %s in %s but not found" % (
                         raster_suffix, dirpath))

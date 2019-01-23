@@ -67,14 +67,15 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
 
 def main():
     """Entry point."""
-    #task_graph = taskgraph.TaskGraph(
-    #    WORKSPACE_DIR, N_WORKERS, TASKGRAPH_UPDATE_INTERVAL)
+    task_graph = taskgraph.TaskGraph(
+        WORKSPACE_DIR, N_WORKERS, TASKGRAPH_UPDATE_INTERVAL)
 
     try:
         os.makedirs(WORKSPACE_DIR)
     except OSError:
         pass
 
+    global_raster_task_path_map = {}
     for (dirpath, dirnames, filenames) in os.walk(NDR_DIRECTORY):
         if dirnames:
             continue
@@ -94,12 +95,21 @@ def main():
                 os.path.splitext(target_raster_path)[0]}_{
                     MOSAIC_CELL_SIZE}.TOKEN'''
             LOGGER.debug(target_raster_path)
-            make_empty_wgs84_raster(
-                MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
-                base_raster_info['datatype'], target_raster_path,
-                target_token_complete_path)
+            make_empty_raster_task = task_graph.add_task(
+                func=make_empty_wgs84_raster,
+                args=(
+                    MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
+                    base_raster_info['datatype'], target_raster_path,
+                    target_token_complete_path),
+                target_path_list=[target_token_complete_path],
+                task_name=f'create empty global {raster_suffix}')
+            global_raster_task_path_map[raster_suffix] = (
+                make_empty_raster_task, target_raster_path)
         LOGGER.info("found all the raster suffixes in %s", dirpath)
         break
+
+    task_graph.close()
+    task_graph.join()
 
 
 def make_empty_wgs84_raster(

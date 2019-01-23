@@ -155,6 +155,7 @@ def make_empty_wgs84_raster(
     target_raster.SetGeoTransform(geotransform)
     target_band = target_raster.GetRasterBand(1)
     target_band.SetNoDataValue(nodata_value)
+    LOGGER.debug(f"filling {target_raster_path} with {nodata_value}")
     target_band.Fill(nodata_value)
     target_band.FlushCache()
     target_band = None

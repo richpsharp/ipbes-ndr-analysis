@@ -21,10 +21,6 @@ LOGGER = logging.getLogger(__name__)
 NDR_DIRECTORY = os.path.join(
     'ipbes_ndr_workspace', 'watershed_processing')
 
-SCENARIOS_TO_AGGREGATE = (
-    'ssp1', 'ssp3', 'ssp5', '1850', '1900', '1910', '1945', '1980',
-    'isimip_2015', 'worlcim_2015', 'esa_2015')
-
 RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp1_n_export.tif',
     'ssp3_n_export.tif',
@@ -35,7 +31,7 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     '1945_n_export.tif',
     '1980_n_export.tif',
     'isimip_2015_n_export.tif',
-    'worlcim_2015_n_export.tif',
+    'worldcim_2015_n_export.tif',
     'esa_2015_n_export.tif',
     'ssp1_modified_load.tif',
     'ssp3_modified_load.tif',
@@ -46,7 +42,7 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     '1945_modified_load.tif',
     '1980_modified_load.tif',
     'isimip_2015_modified_load.tif',
-    'worlcim_2015_modified_load.tif',
+    'worldcim_2015_modified_load.tif',
     'esa_2015_modified_load.tif',
     '2015_rural_total_pop_aligned.tif',
     'ssp1_rural_total_pop_aligned.tif',

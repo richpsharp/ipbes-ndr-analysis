@@ -149,7 +149,7 @@ def make_empty_wgs84_raster(
     target_band = None
     target_raster = None
 
-    target_raster = gdal.OpenEx(target_raster_path, gdal.OF_Raster)
+    target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
     if target_raster:
         with open(target_token_complete_path, 'w') as target_token_file:
             target_token_file.write('complete!')

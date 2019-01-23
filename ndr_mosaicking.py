@@ -219,8 +219,8 @@ def mosaic_base_into_target(
             yoff=offset_dict['yoff']+target_y_off,
             win_xsize=offset_dict['win_xsize'],
             win_ysize=offset_dict['win_ysize'])
-
         valid_mask = numpy.isclose(target_block, target_nodata)
+        LOGGER.debug("mosaic debugging band data: ", band_data[valid_mask])
         target_block[valid_mask] = band_data[valid_mask]
         target_band.WriteArray(
             target_block,

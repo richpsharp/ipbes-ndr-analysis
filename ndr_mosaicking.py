@@ -53,7 +53,7 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp5_2050_ag_load_aligned.tif',
     '1850_ag_load_aligned.tif',
     '1900_ag_load_aligned.tif',
-    '1910_ag_load_aligned.tif',
+    '1920_ag_load_aligned.tif',
     '1945_ag_load_aligned.tif',
     '1980_ag_load_aligned.tif',
     '2015_ag_load_aligned.tif',

@@ -90,10 +90,9 @@ def main():
 
             base_raster_info = pygeoprocessing.get_raster_info(matching_path)
             target_raster_path = os.path.join(WORKSPACE_DIR, raster_suffix)
-            target_token_complete_path = os.path.join(
-                WORKSPACE_DIR, f'''{
-                    os.path.splitext(target_raster_path)[0]}_{
-                        MOSAIC_CELL_SIZE}.TOKEN''')
+            target_token_complete_path = f'''{
+                os.path.splitext(target_raster_path)[0]}_{
+                    MOSAIC_CELL_SIZE}.TOKEN'''
             LOGGER.debug(target_raster_path)
             make_empty_wgs84_raster(
                 MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],

@@ -9,7 +9,7 @@ import pygeoprocessing
 import taskgraph
 
 WORKSPACE_DIR = 'mosaic_workspace'
-N_WORKERS = -1
+N_WORKERS = 16
 TASKGRAPH_UPDATE_INTERVAL = 5.0
 
 logging.basicConfig(
@@ -23,7 +23,8 @@ LOGGER = logging.getLogger(__name__)
 NDR_DIRECTORY = os.path.join(
     'ipbes_ndr_workspace', 'watershed_processing')
 
-MOSAIC_CELL_SIZE = 1.0
+# degree is 110570 at the Equator and we want 300m pixels
+MOSAIC_DEGREE_CELL_SIZE = 300.0 / 110570
 RASTER_SUFFIXES_TO_AGGREGATE = (
     'ssp1_n_export.tif',
     'ssp3_n_export.tif',
@@ -90,12 +91,12 @@ def main():
             target_raster_path = os.path.join(WORKSPACE_DIR, raster_suffix)
             target_token_complete_path = f'''{
                 os.path.splitext(target_raster_path)[0]}_{
-                    MOSAIC_CELL_SIZE}.TOKEN'''
+                    MOSAIC_DEGREE_CELL_SIZE}.TOKEN'''
             LOGGER.debug(target_raster_path)
             make_empty_raster_task = task_graph.add_task(
                 func=make_empty_wgs84_raster,
                 args=(
-                    MOSAIC_CELL_SIZE, base_raster_info['nodata'][0],
+                    MOSAIC_DEGREE_CELL_SIZE, base_raster_info['nodata'][0],
                     base_raster_info['datatype'], target_raster_path,
                     target_token_complete_path),
                 ignore_path_list=[target_raster_path],

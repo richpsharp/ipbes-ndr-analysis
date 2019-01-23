@@ -145,9 +145,6 @@ def main():
     task_graph.join()
 
 
-def mosaic_base_into_target
-
-
 
 def make_empty_wgs84_raster(
         cell_size, nodata_value, target_datatype, target_raster_path,

@@ -444,8 +444,8 @@ def calculate_downstream_ret_eff(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
-    cell_size = pygeoprocessing.get_raster_info(
-        target_downstream_retention_raster_path)['mean_pixel_size']
+    cell_size = abs(pygeoprocessing.get_raster_info(
+        target_downstream_retention_raster_path)['pixel_size'][0])
 
     # these are used to determine if a sample is within the raster
     flow_direction_raster_info = pygeoprocessing.get_raster_info(
@@ -480,7 +480,7 @@ def calculate_downstream_ret_eff(
     LOGGER.info('finding drains')
     start_drain_time = time.time()
     for offset_dict in pygeoprocessing.iterblocks(
-            flow_dir_raster_path_band[0], offset_only=True,
+            flow_dir_raster_path_band, offset_only=True,
             largest_block=0):
         # statically type these for later
         win_xsize = offset_dict['win_xsize']

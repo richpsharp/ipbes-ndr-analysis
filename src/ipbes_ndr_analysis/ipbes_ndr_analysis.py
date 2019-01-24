@@ -1168,10 +1168,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
         for watershed_feature in watershed_layer:
             watershed_fid = watershed_feature.GetFID()
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
-            if (ws_prefix != 'ws_as_bas_15s_beta_299647' and
-                    ws_prefix != 'ws_as_bas_15s_beta_311723'):
-                continue
-            LOGGER.debug('DOINT IT %s', ws_prefix)
             if ws_prefix in scheduled_watershed_prefixes:
                 raise ValueError('%s has already been scheduled', ws_prefix)
             scheduled_watershed_prefixes.add(ws_prefix)

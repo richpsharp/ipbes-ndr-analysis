@@ -1958,7 +1958,7 @@ def merge_watershed_dems(
             pass
         pygeoprocessing.merge_rasters(
             overlapping_dem_path_list, target_dem_path,
-            expected_nodata=-32768.0, bounding_box=watershed_bb)
+            target_nodata=-32768.0, bounding_box=watershed_bb)
     else:
         LOGGER.debug(
             "no overlapping dems found for %s wsid %d", target_dem_path,

@@ -402,14 +402,15 @@ def aggregate_to_database(
     n_export_sum = 0.0
     n_export_nodata = pygeoprocessing.get_raster_info(
         n_export_raster_path)['nodata'][0]
-    for _, data_block in pygeoprocessing.iterblocks(n_export_raster_path):
+    for _, data_block in pygeoprocessing.iterblocks(
+            (n_export_raster_path, 1)):
         n_export_sum += numpy.sum(
             data_block[~numpy.isclose(data_block, n_export_nodata)])
     n_modified_load_sum = 0.0
     n_modified_load_nodata = pygeoprocessing.get_raster_info(
         n_modified_load_raster_path)['nodata'][0]
     for _, data_block in pygeoprocessing.iterblocks(
-            n_modified_load_raster_path):
+            (n_modified_load_raster_path, 1)):
         n_modified_load_sum += numpy.sum(
             data_block[~numpy.isclose(data_block, n_modified_load_nodata)])
 
@@ -418,7 +419,7 @@ def aggregate_to_database(
         rural_nodata = pygeoprocessing.get_raster_info(
             rural_pop_raster_path)['nodata'][0]
         for _, data_block in pygeoprocessing.iterblocks(
-                rural_pop_raster_path):
+                (rural_pop_raster_path, 1)):
             rural_pop_count += numpy.sum(data_block[
                 ~numpy.isclose(data_block, rural_nodata)])
     else:
@@ -428,7 +429,8 @@ def aggregate_to_database(
         runoff_raster_path)['nodata'][0]
     runoff_sum = 0.0
     runoff_count = 0
-    for _, data_block in pygeoprocessing.iterblocks(runoff_raster_path):
+    for _, data_block in pygeoprocessing.iterblocks(
+            (runoff_raster_path, 1)):
         valid_mask = ~numpy.isclose(data_block, runoff_nodata)
         runoff_sum += numpy.sum(data_block[valid_mask])
         runoff_count += numpy.count_nonzero(valid_mask)
@@ -438,7 +440,8 @@ def aggregate_to_database(
     ag_count = 0
     ag_nodata = pygeoprocessing.get_raster_info(
         ag_mask_raster_path)['nodata'][0]
-    for _, data_block in pygeoprocessing.iterblocks(ag_mask_raster_path):
+    for _, data_block in pygeoprocessing.iterblocks(
+            (ag_mask_raster_path, 1)):
         valid_mask = ~numpy.isclose(data_block, 999)
         ag_count += numpy.count_nonzero(valid_mask)
     ag_area = ag_count * abs(numpy.prod(
@@ -451,7 +454,8 @@ def aggregate_to_database(
     ag_ha_per_cell = abs(
         load_raster_info['pixel_size'][0] *
         load_raster_info['pixel_size'][1]) * 0.0001
-    for _, data_block in pygeoprocessing.iterblocks(load_raster_per_ha_path):
+    for _, data_block in pygeoprocessing.iterblocks(
+            (load_raster_per_ha_path, 1)):
         valid_mask = ~numpy.isclose(data_block, ag_load_nodata)
         total_ag_load += numpy.sum(data_block[valid_mask])
     total_ag_load *= ag_ha_per_cell
@@ -573,7 +577,8 @@ def modified_load(
     runoff_sum = 0.0
     runoff_count = 0
 
-    for _, raster_block in pygeoprocessing.iterblocks(runoff_proxy_path):
+    for _, raster_block in pygeoprocessing.iterblocks(
+            (runoff_proxy_path, 1)):
         # this complicated call ensures we don't end up with some garbage
         # precipitation value like what we're getting with
         # he26pr50.
@@ -2134,7 +2139,7 @@ def mask_raster_by_vector(
     base_band = base_raster.GetRasterBand(1)
 
     for offset_dict in pygeoprocessing.iterblocks(
-            base_raster_path, offset_only=True):
+            (base_raster_path, 1), offset_only=True):
         target_array = target_band.ReadAsArray(**offset_dict)
         mask_array = numpy.isclose(target_array, 1)
         base_array = base_band.ReadAsArray(**offset_dict)

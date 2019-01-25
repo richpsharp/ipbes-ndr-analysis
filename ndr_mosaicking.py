@@ -142,7 +142,7 @@ def main():
             except StopIteration:
                 raise RuntimeError(
                     "Expected to find %s in %s but not found %d" % (
-                        raster_suffix, sample_dirpath, filenames)))
+                        raster_suffix, sample_dirpath, filenames))
 
             target_wgs84_raster_path = f'''{
                 os.path.splitext(base_raster_path)[0]}_wgs84.tif'''

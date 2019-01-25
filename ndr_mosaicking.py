@@ -141,7 +141,7 @@ def main():
                         if file_path.endswith(raster_suffix))))
             except StopIteration:
                 raise RuntimeError(
-                    "Expected to find %s in %s but not found %d" % (
+                    "Expected to find %s in %s but not found %s" % (
                         raster_suffix, sample_dirpath, filenames))
 
             target_wgs84_raster_path = f'''{

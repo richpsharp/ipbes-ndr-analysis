@@ -425,165 +425,170 @@ def calculate_downstream_ret_eff(
         3 # 7
     ]
 
-    LOGGER.info(
-        'starting calculate_downstream_ret_eff for %s',
-        target_downstream_retention_raster_path)
+    cdef double s_i_flat = -1
+    cdef double s_i_diag = -1
 
-    # make an interesting temporary directory that has the time/date and
-    # 'flow_accumulation' on it so we can figure out what's going on if we
-    # ever run across it in a temp dir.
-    temp_dir_path = tempfile.mkdtemp(
-        dir=temp_dir_path, prefix='downstream_flow_length_',
-        suffix=time.strftime('%Y-%m-%d_%H_%M_%S', time.gmtime()))
+    try:
+        LOGGER.info(
+            'starting calculate_downstream_ret_eff for %s',
+            target_downstream_retention_raster_path)
 
-    pygeoprocessing.new_raster_from_base(
-        flow_dir_raster_path_band[0],
-        target_downstream_retention_raster_path, gdal.GDT_Float32,
-        [_NODATA], fill_value_list=[_NODATA],
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
-    cell_size = abs(pygeoprocessing.get_raster_info(
-        target_downstream_retention_raster_path)['pixel_size'][0])
+        # make an interesting temporary directory that has the time/date and
+        # 'flow_accumulation' on it so we can figure out what's going on if we
+        # ever run across it in a temp dir.
+        temp_dir_path = tempfile.mkdtemp(
+            dir=temp_dir_path, prefix='downstream_flow_length_',
+            suffix=time.strftime('%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
-    # these are used to determine if a sample is within the raster
-    flow_direction_raster_info = pygeoprocessing.get_raster_info(
-        flow_dir_raster_path_band[0])
-    flow_direction_nodata = flow_direction_raster_info['nodata'][
-        flow_dir_raster_path_band[1]-1]
-    raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
+        pygeoprocessing.new_raster_from_base(
+            flow_dir_raster_path_band[0],
+            target_downstream_retention_raster_path, gdal.GDT_Float32,
+            [_NODATA], fill_value_list=[_NODATA],
+            gtiff_creation_options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
+                'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+        cell_size = abs(pygeoprocessing.get_raster_info(
+            target_downstream_retention_raster_path)['pixel_size'][0])
 
-    flow_dir_managed_raster = _ManagedRaster(
-        flow_dir_raster_path_band[0],
-        flow_dir_raster_path_band[1], 0)
-    channel_managed_raster = _ManagedRaster(
-        channel_raster_path_band[0],
-        channel_raster_path_band[1], 0)
-    ret_eff_managed_raster = _ManagedRaster(
-        ret_eff_raster_path_band[0],
-        ret_eff_raster_path_band[1], 0)
-    ret_eff_nodata = pygeoprocessing.get_raster_info(
-        ret_eff_raster_path_band[0])['nodata'][
-            ret_eff_raster_path_band[1]-1]
-    downstream_retention_managed_raster = _ManagedRaster(
-        target_downstream_retention_raster_path, 1, 1)
+        # these are used to determine if a sample is within the raster
+        flow_direction_raster_info = pygeoprocessing.get_raster_info(
+            flow_dir_raster_path_band[0])
+        flow_direction_nodata = flow_direction_raster_info['nodata'][
+            flow_dir_raster_path_band[1]-1]
+        raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
 
-    cdef double s_i_flat = exp(-5 * cell_size / ret_len)
-    cdef double s_i_diag = exp(-5 * cell_size * 1.4142135 / ret_len)
+        flow_dir_managed_raster = _ManagedRaster(
+            flow_dir_raster_path_band[0],
+            flow_dir_raster_path_band[1], 0)
+        channel_managed_raster = _ManagedRaster(
+            channel_raster_path_band[0],
+            channel_raster_path_band[1], 0)
+        ret_eff_managed_raster = _ManagedRaster(
+            ret_eff_raster_path_band[0],
+            ret_eff_raster_path_band[1], 0)
+        ret_eff_nodata = pygeoprocessing.get_raster_info(
+            ret_eff_raster_path_band[0])['nodata'][
+                ret_eff_raster_path_band[1]-1]
+        downstream_retention_managed_raster = _ManagedRaster(
+            target_downstream_retention_raster_path, 1, 1)
 
-    flow_direction_raster = gdal.OpenEx(
-        flow_dir_raster_path_band[0], gdal.OF_RASTER)
-    flow_direction_band = flow_direction_raster.GetRasterBand(
-        flow_dir_raster_path_band[1])
+        s_i_flat = exp(-5 * cell_size / ret_len)
+        s_i_diag = exp(-5 * cell_size * 1.4142135 / ret_len)
 
-    LOGGER.info('finding drains')
-    start_drain_time = time.time()
-    for offset_dict in pygeoprocessing.iterblocks(
-            flow_dir_raster_path_band, offset_only=True,
-            largest_block=0):
-        # statically type these for later
-        win_xsize = offset_dict['win_xsize']
-        win_ysize = offset_dict['win_ysize']
-        xoff = offset_dict['xoff']
-        yoff = offset_dict['yoff']
+        flow_direction_raster = gdal.OpenEx(
+            flow_dir_raster_path_band[0], gdal.OF_RASTER)
+        flow_direction_band = flow_direction_raster.GetRasterBand(
+            flow_dir_raster_path_band[1])
 
-        # make a buffer big enough to capture block and boundaries around it
-        buffer_array = numpy.empty(
-            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
-            dtype=numpy.uint8)
-        buffer_array[:] = flow_direction_nodata
+        LOGGER.info('finding drains')
+        start_drain_time = time.time()
+        for offset_dict in pygeoprocessing.iterblocks(
+                flow_dir_raster_path_band, offset_only=True,
+                largest_block=0):
+            # statically type these for later
+            win_xsize = offset_dict['win_xsize']
+            win_ysize = offset_dict['win_ysize']
+            xoff = offset_dict['xoff']
+            yoff = offset_dict['yoff']
 
-        # default numpy array boundaries
-        buffer_off = {
-            'xa': 1,
-            'xb': -1,
-            'ya': 1,
-            'yb': -1
-        }
-        # check if we can widen the border to include real data from the
-        # raster
-        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
-                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
-                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
-            if offset_dict[off_id] > 0:
-                # in thise case we have valid data to the left (or up)
-                # grow the window and buffer slice in that direction
-                buffer_off[a_buffer_id] = None
-                offset_dict[off_id] -= 1
-                offset_dict[win_size_id] += 1
+            # make a buffer big enough to capture block and boundaries around it
+            buffer_array = numpy.empty(
+                (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+                dtype=numpy.uint8)
+            buffer_array[:] = flow_direction_nodata
 
-            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
-                # here we have valid data to the right (or bottom)
-                # grow the right buffer and add 1 to window
-                buffer_off[b_buffer_id] = None
-                offset_dict[win_size_id] += 1
+            # default numpy array boundaries
+            buffer_off = {
+                'xa': 1,
+                'xb': -1,
+                'ya': 1,
+                'yb': -1
+            }
+            # check if we can widen the border to include real data from the
+            # raster
+            for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                    ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                    ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+                if offset_dict[off_id] > 0:
+                    # in thise case we have valid data to the left (or up)
+                    # grow the window and buffer slice in that direction
+                    buffer_off[a_buffer_id] = None
+                    offset_dict[off_id] -= 1
+                    offset_dict[win_size_id] += 1
 
-        # read in the valid memory block
-        buffer_array[
-            buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = (
-                flow_direction_band.ReadAsArray(
-                    **offset_dict).astype(numpy.int8))
+                if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                    # here we have valid data to the right (or bottom)
+                    # grow the right buffer and add 1 to window
+                    buffer_off[b_buffer_id] = None
+                    offset_dict[win_size_id] += 1
 
-        # irrespective of how we sampled the DEM only look at the block in
-        # the middle for valid
-        for yi in xrange(1, win_ysize+1):
-            for xi in xrange(1, win_xsize+1):
-                flow_dir = (buffer_array[yi, xi])
-                if isclose(flow_dir, flow_direction_nodata):
-                    continue
-                n_dir = buffer_array[
-                    yi+OFFSET_ARRAY[2*flow_dir+1],
-                    xi+OFFSET_ARRAY[2*flow_dir]]
-                if (isclose(n_dir, flow_direction_nodata) or
-                        channel_managed_raster.get(
-                            xi-1+xoff, yi-1+yoff) == 1):
-                    # it flows to nodata (or edge) so it's a seed
-                    ret_eff_i = ret_eff_managed_raster.get(
-                        xi-1+xoff, yi-1+yoff)
-                    if isclose(ret_eff_i, ret_eff_nodata):
-                        ret_eff_i = 0.0
-                    eff_val = ret_eff_i * (1 - s_i_flat)
-                    flow_stack.push(
-                        FlowPixel(0, xi-1+xoff, yi-1+yoff, eff_val))
-                    downstream_retention_managed_raster.set(
-                        xi-1+xoff, yi-1+yoff, eff_val)
+            # read in the valid memory block
+            buffer_array[
+                buffer_off['ya']:buffer_off['yb'],
+                buffer_off['xa']:buffer_off['xb']] = (
+                    flow_direction_band.ReadAsArray(
+                        **offset_dict).astype(numpy.int8))
 
-    LOGGER.info("drains detected in %fs", time.time()-start_drain_time)
-    while not flow_stack.empty():
-        fp = flow_stack.top()
-        flow_stack.pop()
+            # irrespective of how we sampled the DEM only look at the block in
+            # the middle for valid
+            for yi in xrange(1, win_ysize+1):
+                for xi in xrange(1, win_xsize+1):
+                    flow_dir = (buffer_array[yi, xi])
+                    if isclose(flow_dir, flow_direction_nodata):
+                        continue
+                    n_dir = buffer_array[
+                        yi+OFFSET_ARRAY[2*flow_dir+1],
+                        xi+OFFSET_ARRAY[2*flow_dir]]
+                    if (isclose(n_dir, flow_direction_nodata) or
+                            channel_managed_raster.get(
+                                xi-1+xoff, yi-1+yoff) == 1):
+                        # it flows to nodata (or edge) so it's a seed
+                        ret_eff_i = ret_eff_managed_raster.get(
+                            xi-1+xoff, yi-1+yoff)
+                        if isclose(ret_eff_i, ret_eff_nodata):
+                            ret_eff_i = 0.0
+                        eff_val = ret_eff_i * (1 - s_i_flat)
+                        flow_stack.push(
+                            FlowPixel(0, xi-1+xoff, yi-1+yoff, eff_val))
+                        downstream_retention_managed_raster.set(
+                            xi-1+xoff, yi-1+yoff, eff_val)
 
-        if (fp.xi == 0 or fp.xi == (raster_x_size-1) or
-                fp.yi == 0 or fp.yi == (raster_y_size-1)):
-            check_bounds_top = 1
-        else:
-            check_bounds_top = 0
+        LOGGER.info("drains detected in %fs", time.time()-start_drain_time)
+        while not flow_stack.empty():
+            fp = flow_stack.top()
+            flow_stack.pop()
 
-        for i in xrange(fp.n_i, 8):
-            # neighbor x,y indexes
-            xi_n = fp.xi+OFFSET_ARRAY[2*i]
-            yi_n = fp.yi+OFFSET_ARRAY[2*i+1]
-            if check_bounds_top:
-                if (xi_n < 0 or yi_n < 0 or
-                        xi_n >= raster_x_size or yi_n >= raster_y_size):
-                    continue
-            if flow_dir_managed_raster.get(
-                    xi_n, yi_n) == REVERSE_FLOW_DIR[i]:
-                downstream_retention = (
-                    downstream_retention_managed_raster.get(xi_n, yi_n))
-                if isclose(downstream_retention, _NODATA):
-                    # read upstream flow ret and see if we should update it
-                    s_i = s_i_flat if i % 2 == 0 else s_i_diag
-                    ret_eff_i = ret_eff_managed_raster.get(xi_n, yi_n)
-                    if isclose(ret_eff_i, ret_eff_nodata):
-                        ret_eff_i = 0.0
-                    if ret_eff_i <= fp.ret_eff:
-                        eff_val = fp.ret_eff
-                    else:
-                        eff_val = fp.ret_eff * s_i + ret_eff_i * (1 - s_i)
-                    downstream_retention_managed_raster.set(
-                        xi_n, yi_n, eff_val)
-                    flow_stack.push(FlowPixel(0, xi_n, yi_n, eff_val))
-    shutil.rmtree(temp_dir_path)
+            if (fp.xi == 0 or fp.xi == (raster_x_size-1) or
+                    fp.yi == 0 or fp.yi == (raster_y_size-1)):
+                check_bounds_top = 1
+            else:
+                check_bounds_top = 0
+
+            for i in xrange(fp.n_i, 8):
+                # neighbor x,y indexes
+                xi_n = fp.xi+OFFSET_ARRAY[2*i]
+                yi_n = fp.yi+OFFSET_ARRAY[2*i+1]
+                if check_bounds_top:
+                    if (xi_n < 0 or yi_n < 0 or
+                            xi_n >= raster_x_size or yi_n >= raster_y_size):
+                        continue
+                if flow_dir_managed_raster.get(
+                        xi_n, yi_n) == REVERSE_FLOW_DIR[i]:
+                    downstream_retention = (
+                        downstream_retention_managed_raster.get(xi_n, yi_n))
+                    if isclose(downstream_retention, _NODATA):
+                        # read upstream flow ret and see if we should update it
+                        s_i = s_i_flat if i % 2 == 0 else s_i_diag
+                        ret_eff_i = ret_eff_managed_raster.get(xi_n, yi_n)
+                        if isclose(ret_eff_i, ret_eff_nodata):
+                            ret_eff_i = 0.0
+                        if ret_eff_i <= fp.ret_eff:
+                            eff_val = fp.ret_eff
+                        else:
+                            eff_val = fp.ret_eff * s_i + ret_eff_i * (1 - s_i)
+                        downstream_retention_managed_raster.set(
+                            xi_n, yi_n, eff_val)
+                        flow_stack.push(FlowPixel(0, xi_n, yi_n, eff_val))
+    finally:
+        shutil.rmtree(temp_dir_path, ignore_errors=True)

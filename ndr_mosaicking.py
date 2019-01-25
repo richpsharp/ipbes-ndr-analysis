@@ -140,10 +140,10 @@ def main():
                         for file_path in filenames
                         if file_path.endswith(raster_suffix))))
             except StopIteration:
-                LOGGER.exception(
-                    "Expected to find %s in %s but not found",
-                    raster_suffix, sample_dirpath)
-                continue
+                raise RuntimeError(
+                    "Expected to find %s in %s but not found %d",
+                    raster_suffix, sample_dirpath,
+                    len(RASTER_SUFFIXES_TO_AGGREGATE))
 
             target_wgs84_raster_path = f'''{
                 os.path.splitext(base_raster_path)[0]}_wgs84.tif'''

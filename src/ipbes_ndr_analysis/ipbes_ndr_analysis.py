@@ -1159,10 +1159,6 @@ def main(raw_iam_token_path, raw_workspace_dir):
     for global_watershed_path in global_watershed_path_list:
         watershed_basename = os.path.splitext(
             os.path.basename(global_watershed_path))[0]
-        LOGGER.debug(watershed_basename)
-        if watershed_basename != 'as_bas_15s_beta':
-            LOGGER.debug("skipping %s", watershed_basename)
-            continue
         watershed_vector = gdal.OpenEx(global_watershed_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         for watershed_feature in watershed_layer:

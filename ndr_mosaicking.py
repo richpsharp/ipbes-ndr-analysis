@@ -1,4 +1,5 @@
 """Script to mosaic NDR results into single rasters."""
+import itertools
 import time
 import sys
 import logging
@@ -97,12 +98,15 @@ def main():
 
     global_raster_task_path_map = {}
     LOGGER.debug("gathering directory list")
-    leaf_directory_list = [
+    leaf_directory_list = (
         (dirpath, filenames) for (dirpath, dirnames, filenames) in os.walk(
-            NDR_DIRECTORY) if not dirnames]
-    LOGGER.debug("got %d directories", len(leaf_directory_list))
+            NDR_DIRECTORY) if not dirnames)
 
-    sample_dirpath, sample_filenames = leaf_directory_list[0]
+    # peek at first element then put it back
+    sample_dirpath, sample_filenames = next(leaf_directory_list)
+    leaf_directory_list = (itertools.chain(
+        [(sample_dirpath, sample_filenames)], leaf_directory_list))
+
     for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
         try:
             base_raster_path = next(iter(

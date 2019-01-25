@@ -142,7 +142,7 @@ def main():
             except StopIteration:
                 raise RuntimeError(
                     "Expected to find %s in %s but not found %s" % (
-                        raster_suffix, sample_dirpath, (dirpath, filenames)))
+                        raster_suffix, dirpath, (dirpath, filenames)))
 
             target_wgs84_raster_path = f'''{
                 os.path.splitext(base_raster_path)[0]}_wgs84.tif'''
@@ -267,8 +267,7 @@ def make_empty_wgs84_raster(
     target_raster = gtiff_driver.Create(
         target_raster_path, n_cols, n_rows, 1, target_datatype,
         options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+            'TILED=YES', 'BIGTIFF=YES', 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
     target_raster.SetProjection(WSGS84_WKT)
     target_raster.SetGeoTransform(geotransform)
     target_band = target_raster.GetRasterBand(1)

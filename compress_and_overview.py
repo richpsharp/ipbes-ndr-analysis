@@ -1,8 +1,10 @@
 """Compress a directory of GeoTiffs."""
+import time
 import sys
 import os
 import logging
 
+import taskgraph
 import pygeoprocessing
 import gdal
 
@@ -16,15 +18,19 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-def compress_to(base_raster_path, resample_method, target_path):
+def compress_to(task_graph, base_raster_path, resample_method, target_path):
     gtiff_driver = gdal.GetDriverByName('GTiff')
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     LOGGER.info('compress %s to %s' % (base_raster_path, target_path))
-    gtiff_driver.CreateCopy(
-        target_path, base_raster,
-        options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+    compress_raster = task_graph.add_task(
+        func=gtiff_driver.CreateCopy,
+        args=(target_path, base_raster),
+        kwargs={'options':
+            ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+             'BLOCKXSIZE=256', 'BLOCKYSIZE=256')},
+        target_path_list=[target_path],
+        task_name=f'compress {base_raster_path}')
+    compress_raster.join()
 
     min_dimension = min(
         pygeoprocessing.get_raster_info(target_path)['raster_size'])
@@ -47,10 +53,12 @@ def compress_to(base_raster_path, resample_method, target_path):
 
 
 def main():
+    """Entry point, takes in base path and compression algorithm."""
+    task_graph = taskgraph.TaskGraph('compression_taskgraph_dir', -1)
     base_path = sys.argv[1]
     target_path = f'{os.path.splitext(base_path)[0]}_compressed.tif'
     LOGGER.info(f'starting {base_path} to {target_path}')
-    compress_to(base_path, sys.argv[2], target_path)
+    compress_to(task_graph, base_path, sys.argv[2], target_path)
 
 
 def _make_logger_callback(message):

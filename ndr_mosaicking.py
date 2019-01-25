@@ -96,9 +96,11 @@ def main():
         pass
 
     global_raster_task_path_map = {}
+    LOGGER.debug("gathering directory list")
     leaf_directory_list = [
         (dirpath, filenames) for (dirpath, dirnames, filenames) in os.walk(
             NDR_DIRECTORY) if not dirnames]
+    LOGGER.debug("got %d directories", len(leaf_directory_list))
 
     sample_dirpath, sample_filenames = leaf_directory_list[0]
     for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:

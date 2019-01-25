@@ -90,6 +90,7 @@ def main():
     """Entry point."""
     task_graph = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, TASKGRAPH_UPDATE_INTERVAL)
+    task_graph.join()  # get taskgrpah started
 
     try:
         os.makedirs(WORKSPACE_DIR)

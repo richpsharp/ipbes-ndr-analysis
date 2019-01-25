@@ -42,7 +42,7 @@ def compress_to(base_raster_path, resample_method, target_path):
     gdal.SetConfigOption('COMPRESS_OVERVIEW', 'LZW')
     raster_copy.BuildOverviews(
         resample_method, overview_levels, callback=_make_logger_callback(
-            f'build overview for {os.path.basename(local_path)} '
+            f'build overview for {os.path.basename(target_path)} '
             '%.2f%% complete'))
 
 

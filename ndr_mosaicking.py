@@ -103,10 +103,8 @@ def main():
         (dirpath, filenames) for (dirpath, dirnames, filenames) in os.walk(
             NDR_DIRECTORY) if not dirnames)
 
-    # peek at first element then put it back
+    # peek at first element
     sample_dirpath, sample_filenames = next(leaf_directory_list)
-    leaf_directory_list = (itertools.chain(
-        [(sample_dirpath, sample_filenames)], leaf_directory_list))
 
     for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
         try:
@@ -140,6 +138,9 @@ def main():
 
     for raster_suffix in RASTER_SUFFIXES_TO_AGGREGATE:
         previous_project_task_list = []
+        leaf_directory_list = (
+            (dirpath, filenames) for (dirpath, dirnames, filenames) in os.walk(
+                NDR_DIRECTORY) if not dirnames)
         for dirpath, filenames in leaf_directory_list:
             try:
                 base_raster_path = next(iter(

@@ -184,8 +184,49 @@ def main():
             # this ensures that a mosiac will happen one at a time
             previous_project_task_list = [mosiac_task]
 
-    task_graph.close()
     task_graph.join()
+
+    for _, base_path in global_raster_task_path_map.items():
+        target_path = f'{os.path.splitext(base_path)[0]}_compressed.tif'
+        LOGGER.info(f'starting {base_path} to {target_path}')
+        task_graph.add_task(
+            func=compress_to,
+            args=(base_path, 'near', target_path),
+            target_path_list=[target_path],
+            task_name=f'''compress {base_path}''')
+
+    task_graph.join()
+    task_graph.close()
+
+
+def compress_to(base_raster_path, resample_method, target_path):
+    """Compress base to target using resample method for overviews."""
+    gtiff_driver = gdal.GetDriverByName('GTiff')
+    base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
+    LOGGER.info('compress %s to %s' % (base_raster_path, target_path))
+    gtiff_driver.CreateCopy(
+        target_path, base_raster, options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+    base_raster = None
+    min_dimension = min(
+        pygeoprocessing.get_raster_info(target_path)['raster_size'])
+    LOGGER.info(f"min min_dimension {min_dimension}")
+    raster_copy = gdal.OpenEx(target_path, gdal.OF_RASTER)
+
+    overview_levels = []
+    current_level = 2
+    while True:
+        if min_dimension // current_level == 0:
+            break
+        overview_levels.append(current_level)
+        current_level *= 2
+    LOGGER.info(f'level list: {overview_levels}')
+    gdal.SetConfigOption('COMPRESS_OVERVIEW', 'LZW')
+    raster_copy.BuildOverviews(
+        resample_method, overview_levels, callback=_make_logger_callback(
+            f'build overview for {os.path.basename(target_path)} '
+            '%.2f%% complete'))
 
 
 def mosaic_base_into_target(

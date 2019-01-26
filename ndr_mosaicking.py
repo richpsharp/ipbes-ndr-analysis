@@ -186,7 +186,7 @@ def main():
 
     task_graph.join()
 
-    for _, base_path in global_raster_task_path_map.items():
+    for _, base_path in global_raster_task_path_map.values():
         target_path = f'{os.path.splitext(base_path)[0]}_compressed.tif'
         LOGGER.info(f'starting {base_path} to {target_path}')
         task_graph.add_task(

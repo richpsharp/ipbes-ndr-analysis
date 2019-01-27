@@ -16,7 +16,7 @@ import taskgraph
 gdal.SetCacheMax(2**30)
 
 WORKSPACE_DIR = 'mosaic_workspace'
-N_WORKERS = multiprocessing.cpu_count()
+N_WORKERS = -1
 TASKGRAPH_UPDATE_INTERVAL = 5.0
 
 logging.basicConfig(

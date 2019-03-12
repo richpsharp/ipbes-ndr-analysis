@@ -41,10 +41,10 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     'SSP3_aligned_ndr.tif',
     'SSP5_aligned_ndr.tif',
     '2015_aligned_ndr.tif',
-    'worldclim_2015_modified_load',
-    'worldclim_2050_ssp1_modified_load',
-    'worldclim_2050_ssp3_modified_load',
-    'worldclim_2050_ssp5_modified_load',
+    'worldclim_2015_modified_load.tif',
+    'worldclim_2050_ssp1_modified_load.tif',
+    'worldclim_2050_ssp3_modified_load.tif',
+    'worldclim_2050_ssp5_modified_load.tif',
     )
 
 _WGS84_SRS = osr.SpatialReference()

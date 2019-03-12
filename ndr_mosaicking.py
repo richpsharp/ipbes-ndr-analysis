@@ -70,7 +70,12 @@ RASTER_SUFFIXES_TO_AGGREGATE = (
     '2015_ag_load_aligned.tif',
     'ssp1_2050_ag_load_aligned.tif',
     'ssp3_2050_ag_load_aligned.tif',
-    'ssp5_2050_ag_load_aligned.tif')
+    'ssp5_2050_ag_load_aligned.tif',
+    'SSP1_aligned_ndr.tif',
+    'SSP3_aligned_ndr.tif',
+    'SSP5_aligned_ndr.tif',
+    '2015_aligned_ndr.tif',
+    )
 
 _WGS84_SRS = osr.SpatialReference()
 _WGS84_SRS.ImportFromEPSG(4326)

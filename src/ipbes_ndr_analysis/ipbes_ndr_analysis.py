@@ -815,7 +815,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     for gpw_id, (gpw_bucket, gpw_blob_id) in gpw_buckets.items():
         gpw_dens_path = os.path.join(
             gpw_2010_dir, os.path.basename(gpw_blob_id))
-        gs_gpw_path = f'gs://{gpw_bucket}/gpw_blob_id'
+        gs_gpw_path = f'gs://{gpw_bucket}/{gpw_blob_id}'
         gpw_fetch_task = task_graph.add_task(
             n_retries=5,
             func=reproduce.utils.google_bucket_fetch_and_validate,

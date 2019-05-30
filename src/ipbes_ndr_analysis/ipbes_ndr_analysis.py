@@ -1222,8 +1222,8 @@ def main(raw_iam_token_path, raw_workspace_dir):
     geopackage_driver = ogr.GetDriverByName('GPKG')
     target_summary_shapefile_path = os.path.join(
         workspace_dir, f'ipbes_ndr_summary.gpkg')
-    target_summary_grid_vector = geopackage_driver.CreateCopy(
-        target_summary_shapefile_path, grid_shapefile_vector)
+    target_summary_grid_vector = geopackage_driver.CopyDataSource(
+        grid_shapefile_vector, target_summary_shapefile_path)
     target_summary_grid_layer = target_summary_grid_vector.GetLayer()
 
     for field_name in ['country', 'region']:

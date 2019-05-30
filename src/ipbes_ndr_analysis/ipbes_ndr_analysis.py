@@ -1218,7 +1218,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     country_rtree, country_geom_list = build_spatial_index(
         tm_world_borders_path)
     grid_shapefile_path = os.path.join(CHURN_DIR, 'grid_1_degree.shp')
-    grid_shapefile_vector = ogr.OpenEx(grid_shapefile_path)
+    grid_shapefile_vector = ogr.Open(grid_shapefile_path)
     geopackage_driver = ogr.GetDriverByName('GPKG')
     target_summary_shapefile_path = os.path.join(
         workspace_dir, f'ipbes_ndr_summary.gpkg')

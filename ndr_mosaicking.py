@@ -28,7 +28,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 NDR_DIRECTORY = os.path.join(
-    'ipbes_ndr_workspace', 'watershed_processing')
+    'workspace_ipbes_ndr', 'watershed_processing')
 
 # degree is 110570 at the Equator and we want 300m pixels
 MOSAIC_DEGREE_CELL_SIZE = 300.0 / 110570

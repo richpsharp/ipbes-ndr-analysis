@@ -79,7 +79,8 @@ def main():
                                 numpy.array([[numpy.sum(base_array[valid_mask])]]),
                                 xoff=xi, yoff=yi)
                         else:
-                            target_band.WriteArray(nodata, xoff=xi, yoff=yi)
+                            target_band.WriteArray(
+                                numpy.array([[nodata]]), xoff=xi, yoff=yi)
 
 
 if __name__ == '__main__':

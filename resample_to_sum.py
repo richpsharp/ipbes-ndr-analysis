@@ -38,8 +38,8 @@ def main():
                 # make a new raster that's / factor as big
                 raster_x_size, raster_y_size = raster_info['raster_size']
                 nodata = raster_info['nodata'][0]
-                n_cols = raster_x_size / factor
-                n_rows = raster_y_size / factor
+                n_cols = int(raster_x_size / factor)
+                n_rows = int(raster_y_size / factor)
                 new_gt = list(raster_info['geotransform'])
                 new_gt[1] *= factor
                 new_gt[5] *= factor
@@ -74,9 +74,9 @@ def main():
                             win_ysize=win_ysize)
 
                         valid_mask = ~numpy.isclose(base_array, nodata)
-                        if valid_mask.size > 0:
+                        if valid_mask.any():
                             target_band.WriteArray(
-                                numpy.sum(base_array[valid_mask]),
+                                numpy.array([[numpy.sum(base_array[valid_mask])]]),
                                 xoff=xi, yoff=yi)
                         else:
                             target_band.WriteArray(nodata, xoff=xi, yoff=yi)

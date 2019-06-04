@@ -1,4 +1,5 @@
 """Resample inputs."""
+import argparse
 import os
 import sys
 import glob
@@ -26,6 +27,14 @@ LOGGER = logging.getLogger(__name__)
 
 def main():
     """Entry point."""
+
+    parser = argparse.ArgumentParser(description='Coarsen rasters.')
+    parser.add_argument('integers', metavar='N', type=int, nargs='+',
+                        help='an integer for the accumulator')
+    parser.add_argument('--sum', dest='accumulate', action='store_const',
+                        const=sum, default=max,
+                        help='sum the integers (default: find the max)')
+
     factor_list = [10]
     for pattern in sys.argv[1::]:
         for path in glob.glob(pattern):

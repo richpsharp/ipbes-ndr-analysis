@@ -26,7 +26,7 @@ LOGGER = logging.getLogger(__name__)
 
 def main():
     """Entry point."""
-    factor_list = [100]
+    factor_list = [10]
     for pattern in sys.argv[1::]:
         for path in glob.glob(pattern):
             for factor in factor_list:

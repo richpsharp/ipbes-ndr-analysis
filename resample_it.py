@@ -16,7 +16,7 @@ def main():
             raster_info = pygeoprocessing.get_raster_info(path)
             print(target_path)
             subprocess.check_call([
-                'gdalwarp', path, target_path, '-r', 'average', '-tr',
+                'gdalwarp', path, target_path, '-r', 'sum', '-tr',
                 str(raster_info['pixel_size'][0]*factor),
                 str(raster_info['pixel_size'][1]*factor)])
 

@@ -104,9 +104,10 @@ def main():
         (lucode, int(biophysical_table[lucode]['nathab']))
         for lucode in biophysical_table])
     LOGGER.debug(value_map)
+    LOGGER.debug(pygeoprocessing.get_raster_info(lulc_raster_path))
     pygeoprocessing.reclassify_raster(
         (lulc_raster_path, 1), value_map, lulc_types_raster_path, gdal.GDT_Byte,
-        128, values_required=True)
+        128, values_required=False)
 
 
 if __name__ == '__main__':

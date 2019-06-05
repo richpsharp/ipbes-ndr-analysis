@@ -1,5 +1,5 @@
 ESA_ID,GLOBIO,Representative source,eff_n,load_n,ARIES Class,c_factor_ARIES,nathab
-0,No Data,,,,,,
+0,No Data,,,,,,0
 1,Urban,"UK ""urban""; CR ""infrastructure""",0.05,7,landcover:ArtificialSurface,0.1,0
 2,Cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,landcover:ArableLand,0.5,0
 3,Pasture,"UK ""improved grassland"" (note: I don't know why the N loading for this is so low; I would expect it to be higher. Maybe need to look this up separately)",0.1,10,landcover:Pastureland,0.2,2

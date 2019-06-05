@@ -7,6 +7,12 @@ ESA_ID,GLOBIO,Representative source,eff_n,load_n,ARIES Class,c_factor_ARIES,nath
 5,Forestry,"UK ""woodland""; CR ""forest""",0.8,5,landcover:Forest,0.001,2
 6,Secondary vegetation,"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:TransitionalWoodlandScrub,0.01,1
 7,Undefined,"CR ""unknown""",0.05,0.001,,,0
+10,"Cropland, rainfed",,0.25,use raster,,,1
+11,"Cropland, rainfed, herbaceous cover",,0.25,use raster,,,1
+12,"Cropland, rainfed, tree or shrub cover",,0.25,use raster,,,1
+20,"Cropland, irrigated or post-flooding",,0.25,use raster,,,1
+30,"Mosaic cropland (>50%) / natural vegetation (tree, shrub, herbaceous cover)(<50%)",,0.6,use raster,,,1
+40,"Mosaic natural vegetation (tree, shrub, herbaceous cover) (>50%) / cropland(<50%)",,0.6,6,,,1
 50,"Tree cover, broadleaved, evergreen, closed to open (>15%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
 60,"Tree cover, broadleaved, deciduous, closed to open (>15%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
 61,"Tree cover, broadleaved, deciduous, closed (>40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
@@ -29,6 +35,7 @@ ESA_ID,GLOBIO,Representative source,eff_n,load_n,ARIES Class,c_factor_ARIES,nath
 108,"Temperate Grasslands, Savannas, and Shrublands",,0.6,6,landcover:ScrubHerbaceousVegetation,0.08,1
 109,Flooded Grasslands and Savannas,,0.6,6,landcover:Wetland,0.06,1
 110,Mosaic herbaceous cover (>50%) / tree and shrub (<50%),"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:TransitionalWoodlandScrub,0.01,1
+111,bonus,,,,,,1
 112,"Mediterranean Forests, Woodlands, and Scrub",,0.8,5,landcover:TransitionalWoodlandScrub,0.01,1
 113,Deserts and Xeric Shrublands,,0.3,6,landcover:SparseVegetation,0.01,1
 114,Mangroves,,0.8,5,landcover:Wetland,0.06,1
@@ -52,3 +59,6 @@ ESA_ID,GLOBIO,Representative source,eff_n,load_n,ARIES Class,c_factor_ARIES,nath
 202,Unconsolidated bare areas,"UK ""inland rock""; CR ""barren""",0.05,0.01,landcover:BareArea,0.35,0
 210,Water bodies,"CR ""water""",0.02,0,landcover:WaterBody,0,0
 220,Permanent snow and ice,"CR ""water""",0.02,0,landcover:GlacierAndPerpetualSnow,0,0
+230,Low intensity cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,,,1
+231,Medium intensity cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,,,1
+232,High intensity cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,,,1

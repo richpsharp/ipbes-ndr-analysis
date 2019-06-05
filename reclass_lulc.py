@@ -107,7 +107,7 @@ def main():
     LOGGER.debug(pygeoprocessing.get_raster_info(lulc_raster_path))
     pygeoprocessing.reclassify_raster(
         (lulc_raster_path, 1), value_map, lulc_types_raster_path, gdal.GDT_Byte,
-        128, values_required=False)
+        128, values_required=True)
 
 
 if __name__ == '__main__':

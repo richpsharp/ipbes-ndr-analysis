@@ -101,8 +101,8 @@ def main():
         table_path, 'esa_id', to_lower=True, warn_if_missing=True)
     LOGGER.debug(biophysical_table)
     value_map = dict([
-        (lucode, int(biophysical_table[lucode]['nathab'])
-        for lucode in biophysical_table)])
+        (lucode, int(biophysical_table[lucode]['nathab']))
+        for lucode in biophysical_table])
     LOGGER.debug(value_map)
     pygeoprocessing.reclassify_raster(
         (lulc_raster_path, 1), value_map, lulc_types_raster_path, gdal.GDT_Byte,

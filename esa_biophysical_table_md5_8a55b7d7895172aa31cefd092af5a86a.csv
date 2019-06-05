@@ -1,0 +1,64 @@
+ESA_ID,GLOBIO,Representative source,eff_n,load_n,ARIES Class,c_factor_ARIES,nathab
+0,No Data,,,,,,0
+1,Urban,"UK ""urban""; CR ""infrastructure""",0.05,7,landcover:ArtificialSurface,0.1,0
+2,Cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,landcover:ArableLand,0.5,0
+3,Pasture,"UK ""improved grassland"" (note: I don't know why the N loading for this is so low; I would expect it to be higher. Maybe need to look this up separately)",0.1,10,landcover:Pastureland,0.2,2
+4,Rangeland,"UK ""rough grassland"" ",0.25,17,landcover:ScrubHerbaceousVegetation,0.08,2
+5,Forestry,"UK ""woodland""; CR ""forest""",0.8,5,landcover:Forest,0.001,2
+6,Secondary vegetation,"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:TransitionalWoodlandScrub,0.01,1
+7,Undefined,"CR ""unknown""",0.05,0.001,,,0
+10,"Cropland, rainfed",,0.25,use raster,,,0
+11,"Cropland, rainfed, herbaceous cover",,0.25,use raster,,,0
+12,"Cropland, rainfed, tree or shrub cover",,0.25,use raster,,,0
+20,"Cropland, irrigated or post-flooding",,0.25,use raster,,,0
+30,"Mosaic cropland (>50%) / natural vegetation (tree, shrub, herbaceous cover)(<50%)",,0.6,use raster,,,0
+40,"Mosaic natural vegetation (tree, shrub, herbaceous cover) (>50%) / cropland(<50%)",,0.6,6,,,0
+50,"Tree cover, broadleaved, evergreen, closed to open (>15%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+60,"Tree cover, broadleaved, deciduous, closed to open (>15%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+61,"Tree cover, broadleaved, deciduous, closed (>40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+62,"Tree cover, broadleaved, deciduous, open (15?40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+70,"Tree cover, needle-leaved, evergreen, closed to open (>15%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+71,"Tree cover, needle-leaved, evergreen, closed (>40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+72,"Tree cover, needle-leaved, evergreen, open (15?40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+80,"Tree cover, needle-leaved, deciduous, closed to open (>15%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+81,"Tree cover, needle-leaved, deciduous, closed (>40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+82,"Tree cover, needle-leaved, deciduous, open (15?40%)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+90,"Tree cover, mixed leaf type (broadleaved and needle-leaved)","UK ""woodland""",0.8,5,landcover:Forest,0.001,1
+100,Mosaic tree and shrub (>50%) / herbaceous cover (<50%),"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:TransitionalWoodlandScrub,0.01,1
+101,Tropical and Subtropical Moist Broadleaf Forests,,0.8,5,landcover:Forest,0.001,1
+102,Tropical and Subtropical Dry Broadleaf Forests,,0.8,5,landcover:Forest,0.001,1
+103,Tropical and Subtropical Coniferous Forests,,0.8,5,landcover:Forest,0.001,1
+104,Temperate Broadleaf and Mixed Forests,,0.8,5,landcover:Forest,0.001,1
+105,Temperate Coniferous Forests,,0.8,5,landcover:Forest,0.001,1
+106,Boreal Forests/Taiga,,0.8,5,landcover:Forest,0.001,1
+107,"Tropical and subtropical grasslands, savannas, and shrublands",,0.6,6,landcover:ScrubHerbaceousVegetation,0.08,1
+108,"Temperate Grasslands, Savannas, and Shrublands",,0.6,6,landcover:ScrubHerbaceousVegetation,0.08,1
+109,Flooded Grasslands and Savannas,,0.6,6,landcover:Wetland,0.06,1
+110,Mosaic herbaceous cover (>50%) / tree and shrub (<50%),"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:TransitionalWoodlandScrub,0.01,1
+111,bonus,,,,,,1
+112,"Mediterranean Forests, Woodlands, and Scrub",,0.8,5,landcover:TransitionalWoodlandScrub,0.01,1
+113,Deserts and Xeric Shrublands,,0.3,6,landcover:SparseVegetation,0.01,1
+114,Mangroves,,0.8,5,landcover:Wetland,0.06,1
+120,Shrubland,"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:TransitionalWoodlandScrub,0.01,1
+121,Evergreen shrubland,"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:ScrubHerbaceousVegetation,0.08,1
+122,Deciduous shrubland,"midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:ScrubHerbaceousVegetation,0.08,1
+130,Grassland,"UK ""grassland""",0.4,7.5,landcover:ScrubHerbaceousVegetation,0.08,1
+140,Lichens and mosses,"UK ""bog""",0.8,10,landcover:LichenMoss,0.35,1
+150,"Sparse vegetation (tree, shrub, herbaceous cover) (<15%)",midway bewteen shrub and barren,0.3,6,landcover:SparseHerbaceousCover,0.2,1
+151,bonus,bonus,0.3,6,landcover:SparseHerbaceousCover,0.2,1
+152,Sparse shrub (<15%),midway bewteen shrub and barren,0.3,6,landcover:SparseHerbaceousCover,0.2,1
+153,Sparse herbaceous cover (<15%),midway bewteen shrub and barren,0.3,6,landcover:SparseHerbaceousCover,0.2,1
+160,"Tree cover, flooded, fresh or brackish water","UK ""woodland""",0.8,5,landcover:Wetland,0.06,1
+170,"Tree cover, flooded, saline water","UK ""woodland""",0.8,5,landcover:Wetland,0.06,1
+180,"Shrub or herbaceous cover, flooded, fresh/saline/brackish water","midway between UK ""woodland"" and UK ""grassland""",0.6,6,landcover:Wetland,0.06,1
+190,Urban areas,"UK ""urban""; CR ""infrastructure""",0.05,7,landcover:ArtificialSurface,0.1,0
+198,Lakes,,0.02,0,landcover:WaterBody,0,0
+199,Rock and Ice,,0.02,0,landcover:GlacierAndPerpetualSnow,0,0
+200,Bare areas,"UK ""inland rock""; CR ""barren""",0.05,0.01,landcover:BareArea,0.35,0
+201,Consolidated bare areas,"UK ""inland rock""; CR ""barren""",0.05,0.01,landcover:BareArea,0.35,0
+202,Unconsolidated bare areas,"UK ""inland rock""; CR ""barren""",0.05,0.01,landcover:BareArea,0.35,0
+210,Water bodies,"CR ""water""",0.02,0,landcover:WaterBody,0,0
+220,Permanent snow and ice,"CR ""water""",0.02,0,landcover:GlacierAndPerpetualSnow,0,0
+230,Low intensity cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,,,0
+231,Medium intensity cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,,,0
+232,High intensity cropland,"UK ""Arable and Horticulture""; CR ""other crops""",0.25,use raster,,,0

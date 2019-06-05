@@ -95,7 +95,7 @@ def main():
     lulc_raster_path = 'workspace_ipbes_ndr/churn/globio_landuse_scenarios/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif'
 
     lulc_types_raster_path = 'esa_lulc_types.tif'
-    table_path = 'esa_biophysical_table.csv'
+    table_path = 'esa_biophysical_table_md5_8a55b7d7895172aa31cefd092af5a86a.csv'
 
     biophysical_table = build_lookup_from_csv(
         table_path, 'esa_id', to_lower=True, warn_if_missing=True)

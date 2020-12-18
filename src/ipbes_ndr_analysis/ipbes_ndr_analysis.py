@@ -933,13 +933,13 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     esacci_landuse_path = os.path.join(
         churn_dir, LANDUSE_DIR,
-        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
+        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif')
     fetch_esacci_landuse_task = task_graph.add_task(
         n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'gs://ipbes-ndr-ecoshard-data/'
-            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif',
+            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
             iam_token_path, esacci_landuse_path),
         target_path_list=[esacci_landuse_path],
         task_name='fetch esacci landuse')

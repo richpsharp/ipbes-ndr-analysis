@@ -15,6 +15,7 @@ import zipfile
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+import ecoshard
 import numpy
 import pandas
 import pygeoprocessing
@@ -741,13 +742,13 @@ def main(raw_iam_token_path, raw_workspace_dir):
     degree_bucket = 'ecoshard-root'
     degree_basedata_blob_id = (
         'ipbes/degree_basedata_md5_73a03fa0f5fb622e8d0f07c616576677.zip')
-    degree_gs = f'gs://{degree_bucket}/{degree_basedata_blob_id}'
+    degree_url = f'https://storage.googleapis.com/{degree_bucket}/{degree_basedata_blob_id}'
     degree_zipfile_path = os.path.join(
         CHURN_DIR, os.path.basename(degree_basedata_blob_id))
     degree_basedata_fetch_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            degree_gs, iam_token_path, degree_zipfile_path),
+            degree_url, iam_token_path, degree_zipfile_path),
         target_path_list=[degree_zipfile_path],
         task_name=f'fetch {os.path.basename(degree_zipfile_path)}')
     zip_touch_file_path = os.path.join(
@@ -793,9 +794,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
     for gpw_id, (gpw_bucket, gpw_blob_id) in gpw_buckets.items():
         gpw_dens_path = os.path.join(
             gpw_2010_dir, os.path.basename(gpw_blob_id))
-        gs_gpw_path = f'gs://{gpw_bucket}/{gpw_blob_id}'
+        gs_gpw_path = f'https://storage.googleapis.com/{gpw_bucket}/{gpw_blob_id}'
         gpw_fetch_task = task_graph.add_task(
-            func=reproduce.utils.google_bucket_fetch_and_validate,
+            func=ecoshard.download_url,
             args=(gs_gpw_path, iam_token_path, gpw_dens_path),
             target_path_list=[gpw_dens_path],
             task_name=f"""fetch {os.path.basename(gpw_dens_path)}""",
@@ -817,9 +818,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         'md5_1c4b6d87cb9a167585e1fc49914248fd.zip')
 
     fetch_spatial_population_scenarios_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ecoshard-root/'
+            'https://storage.googleapis.com/ecoshard-root/'
             'ipbes/Spatial_population_scenarios_GeoTIFF_md5_1c4b6d87cb9a167585e1fc49914248fd.zip',
             iam_token_path,
             spatial_population_scenarios_path),
@@ -842,9 +843,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
     ag_load_scenarios_archive_path = os.path.join(
         downloads_dir, 'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip')
     fetch_ag_load_scenarios_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip',
             iam_token_path,
             ag_load_scenarios_archive_path),
@@ -865,9 +866,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
     precip_scenarios_archive_path = os.path.join(
         downloads_dir, 'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip')
     fetch_precip_scenarios_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip',
             iam_token_path,
             precip_scenarios_archive_path),
@@ -891,9 +892,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         precip_scenarios_dir_path,
         'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif')
     fetch_worldclim_2015_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
             iam_token_path, worldclim_2015_path),
         target_path_list=[worldclim_2015_path],
@@ -903,9 +904,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         churn_dir, LANDUSE_DIR,
         'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif')
     fetch_esacci_landuse_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
             iam_token_path, esacci_landuse_path),
         target_path_list=[esacci_landuse_path],
@@ -915,9 +916,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip')
     fetch_globio_landuse_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip',
             iam_token_path, globio_landuse_archive_path),
         target_path_list=[globio_landuse_archive_path],
@@ -941,9 +942,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip')
     fetch_watersheds_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
             iam_token_path, watersheds_archive_path),
         target_path_list=[watersheds_archive_path],
         task_name='download watersheds')
@@ -964,9 +965,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
     biophysical_table_path = os.path.join(
         downloads_dir, 'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv')
     download_biophysical_table_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv',
             iam_token_path, biophysical_table_path),
         target_path_list=[biophysical_table_path],
@@ -984,9 +985,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv')
     download_countries_regions_table_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv',
             iam_token_path, countries_regions_table_path),
         target_path_list=[countries_regions_table_path],
@@ -996,9 +997,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
         downloads_dir,
         'TM_WORLD_BORDERS_SIMPL-0.3_md5_15057f7b17752048f9bd2e2e607fe99c.zip')
     download_tm_world_borders_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ecoshard-root/'
+            'https://storage.googleapis.com/ecoshard-root/'
             'ipbes/TM_WORLD_BORDERS_SIMPL-0.3_md5_15057f7b17752048f9bd2e2e607fe99c.zip',
             iam_token_path, tm_world_borders_archive_path),
         target_path_list=[tm_world_borders_archive_path],
@@ -1017,9 +1018,9 @@ def main(raw_iam_token_path, raw_workspace_dir):
     global_dem_archive_path = os.path.join(
         downloads_dir, 'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip')
     global_dem_download_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch_and_validate,
+        func=ecoshard.download_url,
         args=(
-            'gs://ipbes-ndr-ecoshard-data/'
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip',
             iam_token_path, global_dem_archive_path),
         target_path_list=[global_dem_archive_path],

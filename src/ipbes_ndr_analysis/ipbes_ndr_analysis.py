@@ -1483,9 +1483,9 @@ def schedule_watershed_processing(
             (UTM_PIXEL_SIZE, -UTM_PIXEL_SIZE),
             target_bounding_box),
         kwargs={
-            'base_sr_wkt_list': [wgs84_sr.ExportToWkt()] * len(
+            'base_projection_wkt_list': [wgs84_sr.ExportToWkt()] * len(
                 base_raster_path_list),
-            'target_sr_wkt': epsg_srs.ExportToWkt()
+            'target_projection_wkt': epsg_srs.ExportToWkt()
             },
         target_path_list=aligned_path_list,
         dependent_task_list=[mask_watershed_dem_task],

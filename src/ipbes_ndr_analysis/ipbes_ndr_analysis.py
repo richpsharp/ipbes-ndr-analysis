@@ -259,8 +259,8 @@ def clamp_op(array, threshold_val, nodata):
     """Clamp non-nodata in array to >= threshold_val."""
     result = numpy.empty_like(array)
     result[:] = array
-    threshold_mask = (array != nodata) & (array <= self.threshold_val)
-    result[threshold_mask] = self.threshold_val
+    threshold_mask = (array != nodata) & (array <= threshold_val)
+    result[threshold_mask] = threshold_val
     return result
 
 

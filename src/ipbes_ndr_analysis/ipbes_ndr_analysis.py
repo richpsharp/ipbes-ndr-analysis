@@ -718,9 +718,8 @@ def d_up_op_func(
 
 
 
-def main(raw_iam_token_path, raw_workspace_dir):
+def main(raw_workspace_dir):
     """Entry point."""
-    iam_token_path = os.path.normpath(raw_iam_token_path)
     workspace_dir = os.path.normpath(raw_workspace_dir)
     downloads_dir = os.path.join(workspace_dir, BUCKET_DOWNLOAD_DIR)
     churn_dir = os.path.join(workspace_dir, CHURN_DIR)
@@ -748,7 +747,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
     degree_basedata_fetch_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(
-            degree_url, iam_token_path, degree_zipfile_path),
+            degree_url, degree_zipfile_path),
         target_path_list=[degree_zipfile_path],
         task_name=f'fetch {os.path.basename(degree_zipfile_path)}')
     zip_touch_file_path = os.path.join(
@@ -797,7 +796,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         gs_gpw_path = f'https://storage.googleapis.com/{gpw_bucket}/{gpw_blob_id}'
         gpw_fetch_task = task_graph.add_task(
             func=ecoshard.download_url,
-            args=(gs_gpw_path, iam_token_path, gpw_dens_path),
+            args=(gs_gpw_path, gpw_dens_path),
             target_path_list=[gpw_dens_path],
             task_name=f"""fetch {os.path.basename(gpw_dens_path)}""",
             priority=100)
@@ -896,7 +895,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-            iam_token_path, worldclim_2015_path),
+            worldclim_2015_path),
         target_path_list=[worldclim_2015_path],
         task_name='fetch globio landuse')
 
@@ -908,7 +907,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
-            iam_token_path, esacci_landuse_path),
+            esacci_landuse_path),
         target_path_list=[esacci_landuse_path],
         task_name='fetch esacci landuse')
 
@@ -920,7 +919,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'globio_landuse_historic_and_ssp_blake2b_4153935fd8cbb510d8500d59272e4479.zip',
-            iam_token_path, globio_landuse_archive_path),
+            globio_landuse_archive_path),
         target_path_list=[globio_landuse_archive_path],
         task_name='fetch globio landuse')
     globio_landuse_touch_file_path = (
@@ -945,7 +944,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         func=ecoshard.download_url,
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/watersheds_globe_HydroSHEDS_15arcseconds_blake2b_14ac9c77d2076d51b0258fd94d9378d4.zip',
-            iam_token_path, watersheds_archive_path),
+            watersheds_archive_path),
         target_path_list=[watersheds_archive_path],
         task_name='download watersheds')
     watersheds_touch_file_path = os.path.join(
@@ -969,7 +968,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv',
-            iam_token_path, biophysical_table_path),
+            biophysical_table_path),
         target_path_list=[biophysical_table_path],
         task_name='download biophysical table')
     clean_biophysical_table_pickle_path = os.path.join(
@@ -989,7 +988,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'countries_myregions_final_md5_7e35a0775335f9aaf9a28adbac0b8895.csv',
-            iam_token_path, countries_regions_table_path),
+            countries_regions_table_path),
         target_path_list=[countries_regions_table_path],
         task_name='download countries_regions table')
 
@@ -1001,7 +1000,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ecoshard-root/'
             'ipbes/TM_WORLD_BORDERS_SIMPL-0.3_md5_15057f7b17752048f9bd2e2e607fe99c.zip',
-            iam_token_path, tm_world_borders_archive_path),
+            tm_world_borders_archive_path),
         target_path_list=[tm_world_borders_archive_path],
         task_name='download countries_regions table')
     world_borders_file_path = os.path.join(
@@ -1022,7 +1021,7 @@ def main(raw_iam_token_path, raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'global_dem_3s_blake2b_0532bf0a1bedbe5a98d1dc449a33ef0c.zip',
-            iam_token_path, global_dem_archive_path),
+            global_dem_archive_path),
         target_path_list=[global_dem_archive_path],
         task_name='download dem archive')
     dem_touch_file_path = os.path.join(

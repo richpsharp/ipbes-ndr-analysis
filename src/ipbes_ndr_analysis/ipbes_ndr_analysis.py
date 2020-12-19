@@ -1040,6 +1040,10 @@ def main(raw_workspace_dir):
     dem_path_dir = os.path.join(churn_dir, 'global_dem_3s')
 
     dem_rtree_path = os.path.join(churn_dir, RTREE_PATH)
+    try:
+        os.makedirs(os.path.dirname(dem_rtree_path))
+    except OSError:
+        pass
     dem_path_index_map_path = os.path.join(
         churn_dir, 'dem_rtree_path_index_map.dat')
     build_dem_rtree_task = task_graph.add_task(
@@ -1907,7 +1911,7 @@ def build_raster_rtree(
         raster_rtree.insert(raster_id, raster_info['bounding_box'])
     raster_rtree.close()
     with open(raster_path_index_map_path, 'wb') as f:
-        dill.dump(raster_path_index_map, f)
+        pickle.dump(raster_path_index_map, f)
 
 
 def reproject_geometry_to_target(
@@ -2005,7 +2009,6 @@ def unzip_file(zipfile_path, target_dir, touchfile_path):
 def clean_and_pickle_biophysical_table(
         biophysical_table_path, clean_biophysical_table_pickle_path):
     """Clean out nans and set replacement lucodde and pickle table."""
-
     biophysical_table = pandas.read_csv(biophysical_table_path)
     # clean up biophysical table
     biophysical_table = biophysical_table.fillna(0)
@@ -2016,7 +2019,7 @@ def clean_and_pickle_biophysical_table(
         pandas.to_numeric)
 
     with open(clean_biophysical_table_pickle_path, 'wb') as clean_bpt_file:
-        dill.dump(biophysical_table, clean_bpt_file)
+        pickle.dump(biophysical_table, clean_bpt_file)
 
 
 def mask_raster_by_vector(

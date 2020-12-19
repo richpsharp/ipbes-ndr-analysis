@@ -444,10 +444,11 @@ def calculate_downstream_ret_eff(
             flow_dir_raster_path_band[0],
             target_downstream_retention_raster_path, gdal.GDT_Float32,
             [_NODATA], fill_value_list=[_NODATA],
-            gtiff_creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-                'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+            raster_driver_creation_tuple=(
+                'GTiff',
+                ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                 'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
+                 'BLOCKYSIZE=%d' % (1<<BLOCK_BITS))))
         cell_size = abs(pygeoprocessing.get_raster_info(
             target_downstream_retention_raster_path)['pixel_size'][0])
 

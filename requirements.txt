@@ -1,6 +1,4 @@
-dill
-pandas
-google.cloud.storage
+pandas<0.20.0
 reproduce>=0.0.8
 taskgraph>=0.6.1
 pygeoprocessing>=1.2.3

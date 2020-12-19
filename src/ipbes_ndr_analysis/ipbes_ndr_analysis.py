@@ -1956,6 +1956,7 @@ def reproject_geometry_to_target(
         os.remove(target_path)
 
     target_sr = osr.SpatialReference(target_sr_wkt)
+    target_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
 
     # create a new shapefile from the orginal_datasource
     target_driver = gdal.GetDriverByName('GPKG')
@@ -1968,6 +1969,9 @@ def reproject_geometry_to_target(
 
     # Create a coordinate transformation
     base_sr = osr.SpatialReference(base_sr_wkt)
+
+    base_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
     coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
     # Transform geometry into format desired for the new projection

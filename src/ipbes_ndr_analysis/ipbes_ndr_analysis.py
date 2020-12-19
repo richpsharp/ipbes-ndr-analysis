@@ -821,7 +821,6 @@ def main(raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ecoshard-root/'
             'ipbes/Spatial_population_scenarios_GeoTIFF_md5_1c4b6d87cb9a167585e1fc49914248fd.zip',
-            iam_token_path,
             spatial_population_scenarios_path),
         target_path_list=[spatial_population_scenarios_path],
         task_name='fetch spatial population scenarios')
@@ -846,7 +845,6 @@ def main(raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'ag_load_scenarios_blake2b_2c8661957382df98041890e20ede8c93.zip',
-            iam_token_path,
             ag_load_scenarios_archive_path),
         target_path_list=[ag_load_scenarios_archive_path],
         task_name='fetch ag load scenarios')
@@ -869,7 +867,6 @@ def main(raw_workspace_dir):
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'precip_scenarios_for_ndr_blake2b_393c496d9c2a14e47136d51522eea975.zip',
-            iam_token_path,
             precip_scenarios_archive_path),
         target_path_list=[precip_scenarios_archive_path],
         task_name='fetch precip scenarios')

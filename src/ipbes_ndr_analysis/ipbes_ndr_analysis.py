@@ -1,33 +1,33 @@
 # coding=UTF-8
 """Script to manage NDR runs for IPBES project."""
-import warnings
-import time
-import zipfile
-import sys
-import logging
-import os
 import glob
+import logging
+import pickle
 import math
-import sqlite3
 import multiprocessing
+import os
+import sqlite3
+import sys
+import time
+import warnings
+import zipfile
 
-import reproduce.utils
-import taskgraph
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy
 import pandas
-import dill
-import rtree.index
-import shapely
-from osgeo import ogr
-from osgeo import gdal
-from osgeo import osr
 import pygeoprocessing
 import pygeoprocessing.routing
+import rtree.index
+import shapely
+import taskgraph
 
 import ipbes_ndr_analysis_cython
 
 # set a 1GB limit for the cache
 gdal.SetCacheMax(2**28)
+
 
 class GdalErrorHandler(object):
     def __init__(self):
@@ -73,21 +73,21 @@ WATERSHED_PROCESSING_DIR = 'watershed_processing'
 # The following paths will be relative to the workspace directory
 LANDUSE_DIR = 'globio_landuse_scenarios'
 LANDCOVER_RASTER_PATHS = {
-    #'isimip_1850': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif", 255),
-    #'isimip_1900': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif", 255),
-    #'isimip_1910': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif", 255),
-    #'isimip_1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
-    #'isimip_1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
-    #'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
-    #'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
-    #'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
+    # 'isimip_1850': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1850.tif", 255),
+    # 'isimip_1900': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1900.tif", 255),
+    # 'isimip_1910': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1910.tif", 255),
+    # 'isimip_1945': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1945.tif", 255),
+    # 'isimip_1980': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_1980.tif", 255),
+    # 'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
+    # 'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
+    # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
     'worldclim_esa_2000': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
-    #'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
-    #'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
-    #'isimip_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
-    #'worldclim_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
-    #'worldclim_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
-    #'worldclim_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
+    # 'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
+    # 'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
+    # 'isimip_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
+    # 'worldclim_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
+    # 'worldclim_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
+    # 'worldclim_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
 }
 
 PRECIP_DIR = 'precip_scenarios'
@@ -99,14 +99,14 @@ PRECIP_RASTER_PATHS = {
     # 'isimip_1945': f'{PRECIP_DIR}/precip_1945.tif',
     # 'isimip_1980': f'{PRECIP_DIR}/precip_1980.tif',
     # 'isimip_2015': f'{PRECIP_DIR}/precip_2015.tif',
-    #'worldclim_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-     'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    # 'worldclim_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'isimip_2050_ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     # 'isimip_2050_ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
     # 'isimip_2050_ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
-    #'worldclim_2050_ssp1': f'{PRECIP_DIR}/he26pr50.tif',
-    #'worldclim_2050_ssp3': f'{PRECIP_DIR}/he60pr50.tif',
-    #'worldclim_2050_ssp5': f'{PRECIP_DIR}/he85pr50.tif',
+    # 'worldclim_2050_ssp1': f'{PRECIP_DIR}/he26pr50.tif',
+    # 'worldclim_2050_ssp3': f'{PRECIP_DIR}/he60pr50.tif',
+    # 'worldclim_2050_ssp5': f'{PRECIP_DIR}/he85pr50.tif',
 }
 
 AG_LOAD_DIR = 'ag_load_scenarios'
@@ -117,14 +117,14 @@ AG_RASTER_PATHS = {
     # 'isimip_1945': f'{AG_LOAD_DIR}/1945_ag_load.tif',
     # 'isimip_1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
     # 'isimip_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
-    #'worldclim_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
-     'worldclim_esa_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    # 'worldclim_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'worldclim_esa_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     # 'isimip_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
     # 'isimip_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
     # 'isimip_2050_ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
-    #'worldclim_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
-    #'worldclim_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
-    #'worldclim_2050_ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
+    # 'worldclim_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
+    # 'worldclim_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
+    # 'worldclim_2050_ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
 }
 
 POPULATION_SCENARIOS_DIR = 'spatial_population_scenarios'
@@ -140,9 +140,14 @@ POPULATION_RASTER_PATHS = {
 def db_to_shapefile(database_path, target_vector_path):
     """Convert database to vector.
 
-    Parameters:
+    Args:
         database_path (str): path to an SQLITE3 database with tables for
-            biophysical properties and """
+            biophysical properties.
+        target_vector_path (str): path to target vector created from DB.
+
+    Return:
+        None
+    """
     LOGGER.info("reporting results")
     try:
         if os.path.exists(target_vector_path):
@@ -486,7 +491,7 @@ def aggregate_to_database(
                         ws_prefix, scenario_key, n_export_sum,
                         n_modified_load_sum, rural_pop_count,
                         average_runoff_coefficient, ag_area,
-                        total_ag_load, dill.dumps(aggregate_dict)))
+                        total_ag_load, pickle.dumps(aggregate_dict)))
             except:
                 LOGGER.exception('"%s %s"', n_export_sum, n_modified_load_sum)
             conn.commit()
@@ -933,13 +938,13 @@ def main(raw_iam_token_path, raw_workspace_dir):
 
     esacci_landuse_path = os.path.join(
         churn_dir, LANDUSE_DIR,
-        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
+        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif')
     fetch_esacci_landuse_task = task_graph.add_task(
         n_retries=5,
         func=reproduce.utils.google_bucket_fetch_and_validate,
         args=(
             'gs://ipbes-ndr-ecoshard-data/'
-            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif',
+            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
             iam_token_path, esacci_landuse_path),
         target_path_list=[esacci_landuse_path],
         task_name='fetch esacci landuse')

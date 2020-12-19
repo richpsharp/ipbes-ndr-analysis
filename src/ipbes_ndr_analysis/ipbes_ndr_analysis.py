@@ -1114,7 +1114,7 @@ def main(raw_workspace_dir):
 
     with open(clean_biophysical_table_pickle_path, 'rb') as \
             biophysical_table_file:
-        biophysical_table = dill.load(biophysical_table_file)
+        biophysical_table = pickle.load(biophysical_table_file)
 
     eff_n_lucode_map = dict(
         zip(biophysical_table['ID'], biophysical_table['eff_n']))
@@ -1304,7 +1304,7 @@ def aggregate_to_rasters(database_path, degree_raster_dir):
             """SELECT grid_aggregation_pickle FROM nutrient_export
             WHERE (scenario_key = ?)""", (scenario_key,))
         for result in cursor:
-            grid_aggregation_pickle = dill.loads(result[0])
+            grid_aggregation_pickle = pickle.loads(result[0])
             for aggregate_type, grid_list in grid_aggregation_pickle.items():
                 for value, (lng, lat) in grid_list:
                     x_i = lng+180
@@ -1859,7 +1859,7 @@ def merge_watershed_dems(
     LOGGER.debug(dem_rtree.bounds)
 
     with open(dem_path_index_map_path, 'rb') as dill_file:
-        dem_path_index_map = dill.load(dill_file)
+        dem_path_index_map = pickle.load(dill_file)
 
     overlapping_dem_list = list(dem_rtree.intersection(watershed_bb))
 

@@ -664,44 +664,42 @@ def div_arrays(num_array, denom_array):
     return result
 
 
-class MultByScalar(taskgraph.EncapsulatedTaskOp):
-    """Multiply raster by a scalar, ignore nodata."""
-    def __init__(self, raster_path_band, scalar, target_nodata, target_path):
-        super(MultByScalar, self).__init__()
-        self.raster_path_band = raster_path_band
-        self.scalar = scalar
-        self.target_nodata = target_nodata
-        self.target_path = target_path
-
-    def __call__(self):
-        nodata = pygeoprocessing.get_raster_info(
-            self.raster_path_band[0])['nodata'][self.raster_path_band[1]-1]
-
-        def mult_by_scalar(array):
-            """Multiply non-nodta values by self.scalar"""
-            result = numpy.empty_like(array)
-            result[:] = self.target_nodata
-            valid_mask = array != nodata
-            result[valid_mask] = array[valid_mask] * self.scalar
-            return result
-
-        pygeoprocessing.raster_calculator(
-            [self.raster_path_band], mult_by_scalar, self.target_path,
-            gdal.GDT_Float32, self.target_nodata)
+def _mult_by_scalar_op(array, scalar, nodata, target_nodata):
+    """Multiply non-nodta values by self.scalar"""
+    result = numpy.empty_like(array)
+    result[:] = target_nodata
+    valid_mask = array != nodata
+    result[valid_mask] = array[valid_mask] * scalar
+    return result
 
 
-class DUpOp(taskgraph.EncapsulatedTaskOp):
-    """Calculate D_up from Equation 7 of NDR user's guide.
+def mult_by_scalar_func(
+        raster_path, scalar, target_nodata, target_path):
+    nodata = pygeoprocessing.get_raster_info(raster_path)['nodata'][0]
+    pygeoprocessing.raster_calculator(
+        [(raster_path, 1), (scalar, 'raw'), (nodata, 'raw'),
+         (target_nodata, 'raw')], _mult_by_scalar_op, target_path,
+        gdal.GDT_Float32, target_nodata)
 
-    Given a flow accumulation raster, slope accumulation raster, and pixel
-    size, we can calculate avg(S)*sqrt(A) for each pixel
-        avg(S) = slope_accum / flow_accum
-        A = flow_accum * sqrt(flow_accum * pixel_area**2)
-    """
-    def __init__(
-            self, pixel_area, slope_accum_raster_path,
-            flow_accum_raster_path, target_d_up_raster_path):
-        """Parameters:
+
+def _d_up_op(
+        slope_accum_array, flow_accmulation_array, pixel_area,
+        flow_accum_nodata):
+    """Mult average upslope by sqrt of upslope area."""
+    result = numpy.empty_like(slope_accum_array)
+    result[:] = NODATA
+    valid_mask = flow_accmulation_array != flow_accum_nodata
+    result[valid_mask] = (
+        slope_accum_array[valid_mask] /
+        flow_accmulation_array[valid_mask]) * numpy.sqrt(
+            flow_accmulation_array[valid_mask] * pixel_area)
+    return result
+
+
+def d_up_op_func(
+        pixel_area, slope_accum_raster_path,
+        flow_accum_raster_path, target_d_up_raster_path):
+    """Parameters:
             pixel_area (float): area of input raster pixel in m^2.
             slope_accum_raster_path (string): path to slope accumulation
                 raster.
@@ -709,31 +707,14 @@ class DUpOp(taskgraph.EncapsulatedTaskOp):
             target_d_up_raster_path (string): path to target d_up raster path
                 created by a call to __call__.
         """
-        super(DUpOp, self).__init__()
-        self.pixel_area = pixel_area
-        self.slope_accum_raster_path = slope_accum_raster_path
-        self.flow_accum_raster_path = flow_accum_raster_path
-        self.target_d_up_raster_path = target_d_up_raster_path
+    flow_accum_nodata = pygeoprocessing.get_raster_info(
+        flow_accum_raster_path)['nodata'][0]
+    pygeoprocessing.raster_calculator(
+        [(slope_accum_raster_path, 1),
+         (flow_accum_raster_path, 1), (pixel_area, 'raw'),
+         (flow_accum_nodata, 'raw')], _d_up_op,
+        target_d_up_raster_path, gdal.GDT_Float32, NODATA)
 
-    def __call__(self):
-        flow_accum_nodata = pygeoprocessing.get_raster_info(
-            self.flow_accum_raster_path)['nodata'][0]
-
-        def d_up_op(slope_accum_array, flow_accmulation_array):
-            """Mult average upslope by sqrt of upslope area."""
-            result = numpy.empty_like(slope_accum_array)
-            result[:] = NODATA
-            valid_mask = flow_accmulation_array != flow_accum_nodata
-            result[valid_mask] = (
-                slope_accum_array[valid_mask] /
-                flow_accmulation_array[valid_mask]) * numpy.sqrt(
-                    flow_accmulation_array[valid_mask] * self.pixel_area)
-            return result
-
-        pygeoprocessing.raster_calculator(
-            [(self.slope_accum_raster_path, 1),
-             (self.flow_accum_raster_path, 1)], d_up_op,
-            self.target_d_up_raster_path, gdal.GDT_Float32, NODATA)
 
 
 def main(raw_iam_token_path, raw_workspace_dir):
@@ -1398,8 +1379,7 @@ def schedule_watershed_processing(
             watershed_bb, watershed_fid, dem_rtree_path,
             dem_path_index_map_path, watershed_dem_path),
         target_path_list=[watershed_dem_path],
-        task_name='merge_watershed_dems_%s' % ws_prefix,
-        priority=task_id)
+        task_name='merge_watershed_dems_%s' % ws_prefix)
 
     masked_watershed_dem_path = watershed_dem_path.replace(
         '.tif', '_masked.tif')
@@ -1424,8 +1404,7 @@ def schedule_watershed_processing(
             watershed_path, watershed_fid, epsg_srs.ExportToWkt(),
             local_watershed_path),
         target_path_list=[local_watershed_path],
-        task_name='project_watershed_%s' % ws_prefix,
-        priority=task_id)
+        task_name='project_watershed_%s' % ws_prefix)
 
     mask_watershed_dem_task = task_graph.add_task(
         func=mask_raster_by_vector,
@@ -1503,8 +1482,7 @@ def schedule_watershed_processing(
             },
         target_path_list=aligned_path_list,
         dependent_task_list=[mask_watershed_dem_task],
-        task_name='align resize %s' % ws_prefix,
-        priority=task_id)
+        task_name='align resize %s' % ws_prefix)
 
     masked_gpw_2010_den_path = _base_to_aligned_path_op(
         os.path.join(workspace_dir, 'masked_gpw_2010_den.tif'))
@@ -1533,8 +1511,7 @@ def schedule_watershed_processing(
         target_path_list=[
             filled_watershed_dem_path],
         dependent_task_list=[align_resize_task],
-        task_name='fill pits %s' % ws_prefix,
-        priority=task_id)
+        task_name='fill pits %s' % ws_prefix)
 
     flow_dir_task = task_graph.add_task(
         func=pygeoprocessing.routing.flow_dir_d8,
@@ -1545,8 +1522,7 @@ def schedule_watershed_processing(
         target_path_list=[
             flow_dir_path],
         dependent_task_list=[fill_pits_task],
-        task_name='flow dir %s' % ws_prefix,
-        priority=task_id)
+        task_name='flow dir %s' % ws_prefix)
 
     # flow accum dem
     flow_accum_path = os.path.join(
@@ -1557,8 +1533,7 @@ def schedule_watershed_processing(
             (flow_dir_path, 1), flow_accum_path),
         target_path_list=[flow_accum_path],
         dependent_task_list=[flow_dir_task],
-        task_name='flow accmulation %s' % ws_prefix,
-        priority=task_id)
+        task_name='flow accmulation %s' % ws_prefix)
 
     # calculate slope
     slope_raster_path = os.path.join(
@@ -1568,8 +1543,7 @@ def schedule_watershed_processing(
         args=((filled_watershed_dem_path, 1), slope_raster_path),
         target_path_list=[slope_raster_path],
         dependent_task_list=[fill_pits_task],
-        task_name='calculate_slope_%s' % ws_prefix,
-        priority=task_id)
+        task_name='calculate_slope_%s' % ws_prefix)
 
     clamp_slope_raster_path = os.path.join(
         ws_working_dir, '%s_clamp_slope.tif' % ws_prefix)
@@ -1578,8 +1552,7 @@ def schedule_watershed_processing(
         args=(slope_raster_path, 0.005, clamp_slope_raster_path),
         target_path_list=[clamp_slope_raster_path],
         dependent_task_list=[calculate_slope_task],
-        task_name='clamp_slope_%s' % ws_prefix,
-        priority=task_id)
+        task_name='clamp_slope_%s' % ws_prefix)
 
     # calculate D_up
     slope_accum_watershed_dem_path = os.path.join(
@@ -1592,8 +1565,7 @@ def schedule_watershed_processing(
             'weight_raster_path_band': (clamp_slope_raster_path, 1)},
         target_path_list=[slope_accum_watershed_dem_path],
         dependent_task_list=[flow_accum_task, clamp_slope_task],
-        task_name='slope_accumulation_%s' % ws_prefix,
-        priority=task_id)
+        task_name='slope_accumulation_%s' % ws_prefix)
 
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
     d_up_task = task_graph.add_task(
@@ -1602,8 +1574,7 @@ def schedule_watershed_processing(
             flow_accum_path, d_up_raster_path),
         target_path_list=[d_up_raster_path],
         dependent_task_list=[slope_accumulation_task, flow_accum_task],
-        task_name='d_up_%s' % ws_prefix,
-        priority=task_id)
+        task_name='d_up_%s' % ws_prefix)
 
     # calculate the flow channels
     channel_path = os.path.join(ws_working_dir, '%s_channel.tif' % ws_prefix)
@@ -1613,8 +1584,7 @@ def schedule_watershed_processing(
             flow_accum_path, FLOW_THRESHOLD, channel_path),
         target_path_list=[channel_path],
         dependent_task_list=[flow_accum_task],
-        task_name='threshold flow accum %s' % ws_prefix,
-        priority=task_id)
+        task_name='threshold flow accum %s' % ws_prefix)
 
     # calculate flow path in pixels length down to stream
     pixel_flow_length_raster_path = os.path.join(
@@ -1627,20 +1597,19 @@ def schedule_watershed_processing(
         target_path_list=[
             pixel_flow_length_raster_path],
         dependent_task_list=[fill_pits_task, threshold_flow_task],
-        task_name='downstream_pixel_flow_length_%s' % ws_prefix,
-        priority=task_id)
+        task_name='downstream_pixel_flow_length_%s' % ws_prefix)
 
     # calculate real flow_path (flow length * pixel size)
     downstream_flow_distance_path = os.path.join(
         ws_working_dir, '%s_m_flow_length.tif' % ws_prefix)
     downstream_flow_distance_task = task_graph.add_task(
-        func=MultByScalar(
-            (pixel_flow_length_raster_path, 1), UTM_PIXEL_SIZE, NODATA,
+        func=mult_by_scalar_func,
+        args=(
+            pixel_flow_length_raster_path, UTM_PIXEL_SIZE, NODATA,
             downstream_flow_distance_path),
         target_path_list=[downstream_flow_distance_path],
         dependent_task_list=[downstream_flow_length_task],
-        task_name='downstream_m_flow_dist_%s' % ws_prefix,
-        priority=task_id)
+        task_name='downstream_m_flow_dist_%s' % ws_prefix)
 
     # calculate downstream distance / downstream slope
     d_dn_per_pixel_path = os.path.join(
@@ -1654,8 +1623,7 @@ def schedule_watershed_processing(
         target_path_list=[d_dn_per_pixel_path],
         dependent_task_list=[
             downstream_flow_distance_task, clamp_slope_task],
-        task_name='d_dn_per_pixel_%s' % ws_prefix,
-        priority=task_id)
+        task_name='d_dn_per_pixel_%s' % ws_prefix)
 
     # calculate D_dn: downstream sum of distance / downstream slope
     d_dn_raster_path = os.path.join(
@@ -1671,8 +1639,7 @@ def schedule_watershed_processing(
         dependent_task_list=[
             fill_pits_task, flow_accum_task, d_dn_per_pixel_task,
             threshold_flow_task],
-        task_name='d_dn_%s' % ws_prefix,
-        priority=task_id)
+        task_name='d_dn_%s' % ws_prefix)
 
     # calculate IC
     ic_path = os.path.join(ws_working_dir, '%s_ic.tif' % ws_prefix)
@@ -1683,8 +1650,7 @@ def schedule_watershed_processing(
             calc_ic, ic_path, gdal.GDT_Float32, IC_NODATA),
         target_path_list=[ic_path],
         dependent_task_list=[d_up_task, d_dn_task],
-        task_name='ic_%s' % ws_prefix,
-        priority=task_id)
+        task_name='ic_%s' % ws_prefix)
 
     for landcover_id, (global_landcover_path, global_landcover_nodata) in (
             LANDCOVER_RASTER_PATHS.items()):

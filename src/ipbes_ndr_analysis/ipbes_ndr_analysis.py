@@ -2009,6 +2009,7 @@ def unzip_file(zipfile_path, target_dir, touchfile_path):
 def clean_and_pickle_biophysical_table(
         biophysical_table_path, clean_biophysical_table_pickle_path):
     """Clean out nans and set replacement lucodde and pickle table."""
+    LOGGER.debug(f'pickle {biophysical_table_path}')
     biophysical_table = pandas.read_csv(biophysical_table_path)
     # clean up biophysical table
     biophysical_table = biophysical_table.fillna(0)

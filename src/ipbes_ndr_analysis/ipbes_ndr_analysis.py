@@ -749,7 +749,9 @@ def main(raw_workspace_dir):
         args=(
             degree_url, degree_zipfile_path),
         target_path_list=[degree_zipfile_path],
-        task_name=f'fetch {os.path.basename(degree_zipfile_path)}')
+        task_name=(
+            f'fetch {degree_zipfile_path}\n'
+            f'from {degree_url}'))
     zip_touch_file_path = os.path.join(
         os.path.dirname(degree_zipfile_path), 'degree_basedata_zip.txt')
     _ = task_graph.add_task(

@@ -354,7 +354,7 @@ def aggregate_to_database(
     """
     base_raster_info = pygeoprocessing.get_raster_info(n_export_raster_path)
     local_bb = base_raster_info['bounding_box']
-    base_ref_wkt = base_raster_info['projection']
+    base_ref_wkt = base_raster_info['projection_wkt']
     wgs84_sr = osr.SpatialReference()
     wgs84_sr.ImportFromEPSG(4326)
     wgs84_bb = pygeoprocessing.transform_bounding_box(

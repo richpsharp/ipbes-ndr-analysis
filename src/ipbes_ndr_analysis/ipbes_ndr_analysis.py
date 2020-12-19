@@ -743,7 +743,7 @@ def main(raw_workspace_dir):
         'ipbes/degree_basedata_md5_73a03fa0f5fb622e8d0f07c616576677.zip')
     degree_url = f'https://storage.googleapis.com/{degree_bucket}/{degree_basedata_blob_id}'
     degree_zipfile_path = os.path.join(
-        CHURN_DIR, os.path.basename(degree_basedata_blob_id))
+        churn_dir, os.path.basename(degree_basedata_blob_id))
     degree_basedata_fetch_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(
@@ -1171,7 +1171,7 @@ def main(raw_workspace_dir):
     LOGGER.debug("build country spatial index")
     country_rtree, country_geom_list = build_spatial_index(
         tm_world_borders_path)
-    grid_shapefile_path = os.path.join(CHURN_DIR, 'grid_1_degree.shp')
+    grid_shapefile_path = os.path.join(churn_dir, 'grid_1_degree.shp')
     grid_shapefile_vector = ogr.Open(grid_shapefile_path)
     geopackage_driver = ogr.GetDriverByName('GPKG')
     target_summary_shapefile_path = os.path.join(

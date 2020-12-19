@@ -728,7 +728,7 @@ def main(raw_workspace_dir):
     gpw_2010_dir = os.path.join(
         workspace_dir, BUCKET_DOWNLOAD_DIR, 'gpw_pop_densities')
 
-    for dir_path in [workspace_dir, churn_dir, downloads_dir]:
+    for dir_path in [workspace_dir, churn_dir, downloads_dir, gpw_2010_dir]:
         try:
             os.makedirs(dir_path)
         except OSError:

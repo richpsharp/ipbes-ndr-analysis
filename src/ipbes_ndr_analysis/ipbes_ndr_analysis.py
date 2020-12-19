@@ -1576,7 +1576,8 @@ def schedule_watershed_processing(
 
     d_up_raster_path = os.path.join(ws_working_dir, '%s_d_up.tif' % ws_prefix)
     d_up_task = task_graph.add_task(
-        func=DUpOp(
+        func=d_up_op_func,
+        args=(
             UTM_PIXEL_SIZE**2, slope_accum_watershed_dem_path,
             flow_accum_path, d_up_raster_path),
         target_path_list=[d_up_raster_path],

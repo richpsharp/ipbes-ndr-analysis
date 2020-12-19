@@ -2034,10 +2034,7 @@ def mask_raster_by_vector(
         base_nodata = base_raster_info['nodata']
     pygeoprocessing.new_raster_from_base(
         base_raster_path, target_masked_raster_path,
-        base_raster_info['datatype'], base_nodata,
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        base_raster_info['datatype'], base_nodata)
 
     pygeoprocessing.rasterize(
         vector_path, target_masked_raster_path, [1], None)

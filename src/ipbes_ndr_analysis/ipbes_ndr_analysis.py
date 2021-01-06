@@ -738,10 +738,19 @@ def main(raw_workspace_dir):
         workspace_dir, WATERSHED_PROCESSING_DIR)
     gpw_2010_dir = os.path.join(
         workspace_dir, BUCKET_DOWNLOAD_DIR, 'gpw_pop_densities')
+    precip_scenarios_dir_path = os.path.join(churn_dir, PRECIP_DIR)
+    globio_landuse_dir_path = os.path.join(churn_dir, LANDUSE_DIR)
+    watersheds_dir_path = os.path.join(
+        churn_dir, 'watersheds_globe_HydroSHEDS_15arcseconds')
 
     for dir_path in [
-            workspace_dir, churn_dir, downloads_dir, gpw_2010_dir,
-            watershed_processing_dir]:
+            workspace_dir, churn_dir, downloads_dir,
+            gpw_2010_dir,
+            watershed_processing_dir,
+            precip_scenarios_dir_path,
+            globio_landuse_dir_path,
+            watersheds_dir_path,
+            ]:
         try:
             os.makedirs(dir_path)
         except OSError:
@@ -888,8 +897,6 @@ def main(raw_workspace_dir):
     precip_scenarios_touch_file_path = (
         os.path.join(
             churn_dir, os.path.basename(precip_scenarios_archive_path) + '_unzipped'))
-    precip_scenarios_dir_path = _make_and_return_dir(os.path.join(
-        churn_dir, PRECIP_DIR))
     unzip_precip_scenarios_task = task_graph.add_task(
         func=unzip_file,
         args=(
@@ -942,8 +949,6 @@ def main(raw_workspace_dir):
         os.path.join(
             churn_dir, os.path.basename(globio_landuse_archive_path) + '_unzipped'))
 
-    globio_landuse_dir_path = _make_and_return_dir(os.path.join(
-        churn_dir, LANDUSE_DIR))
     unzip_globio_landuse_task = task_graph.add_task(
         func=unzip_file,
         args=(
@@ -973,9 +978,6 @@ def main(raw_workspace_dir):
         target_path_list=[watersheds_touch_file_path],
         dependent_task_list=[fetch_watersheds_task],
         task_name=f'unzip watersheds_globe_HydroSHEDS_15arcseconds')
-    # this will be where all the watersheds unzip
-    watersheds_dir_path = os.path.join(
-        churn_dir, 'watersheds_globe_HydroSHEDS_15arcseconds')
 
     biophysical_table_path = os.path.join(
         downloads_dir, 'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv')

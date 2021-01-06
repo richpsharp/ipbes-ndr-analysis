@@ -60,10 +60,10 @@ K_VAL = 1.0
 
 logging.basicConfig(
     level=logging.DEBUG,
+    file='log.txt',
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
-        ' [%(funcName)s:%(lineno)d] %(message)s'),
-    stream=sys.stdout)
+        ' [%(funcName)s:%(lineno)d] %(message)s'))
 LOGGER = logging.getLogger(__name__)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'

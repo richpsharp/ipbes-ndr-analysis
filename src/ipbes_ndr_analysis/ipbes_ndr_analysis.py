@@ -60,7 +60,7 @@ K_VAL = 1.0
 
 logging.basicConfig(
     level=logging.DEBUG,
-    file='log.txt',
+    filename='log.txt',
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'))

@@ -27,7 +27,7 @@ import taskgraph
 import ipbes_ndr_analysis_cython
 
 # set a 1GB limit for the cache
-gdal.SetCacheMax(2**28)
+gdal.SetCacheMax(2**27)
 
 
 class GdalErrorHandler(object):

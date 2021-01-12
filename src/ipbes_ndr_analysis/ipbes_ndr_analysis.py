@@ -82,7 +82,6 @@ LANDCOVER_RASTER_PATHS = {
     # 'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
-    LANDUSE_DIR
     'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
     # 'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
     # 'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),

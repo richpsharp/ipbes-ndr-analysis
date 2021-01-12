@@ -82,6 +82,7 @@ LANDCOVER_RASTER_PATHS = {
     # 'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
+    LANDUSE_DIR
     'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
     # 'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
     # 'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
@@ -918,20 +919,37 @@ def main(raw_workspace_dir):
         target_path_list=[worldclim_2015_path],
         task_name='fetch globio landuse')
 
-    esacci_landuse_path = os.path.join(
+    esacci_2000_landuse_path = os.path.join(
         churn_dir, LANDUSE_DIR,
         'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif')
+
     try:
-        os.makedirs(os.path.dirname(esacci_landuse_path))
+        os.makedirs(os.path.dirname(esacci_2000_landuse_path))
     except OSError:
         pass
-    fetch_esacci_landuse_task = task_graph.add_task(
+    fetch_esacci_2000_landuse_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
-            esacci_landuse_path),
-        target_path_list=[esacci_landuse_path],
+            esacci_2000_landuse_path),
+        target_path_list=[esacci_2000_landuse_path],
+        task_name='fetch esacci landuse')
+
+    esacci_2015_landuse_path = os.path.join(
+        churn_dir, LANDUSE_DIR,
+        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
+    try:
+        os.makedirs(os.path.dirname(esacci_2015_landuse_path))
+    except OSError:
+        pass
+    fetch_esacci_2015_landuse_task = task_graph.add_task(
+        func=ecoshard.download_url,
+        args=(
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
+            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif',
+            esacci_2015_landuse_path),
+        target_path_list=[esacci_2015_landuse_path],
         task_name='fetch esacci landuse')
 
     globio_landuse_archive_path = os.path.join(

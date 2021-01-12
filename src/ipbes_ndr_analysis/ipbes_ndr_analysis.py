@@ -65,6 +65,7 @@ logging.basicConfig(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'))
 LOGGER = logging.getLogger(__name__)
+logging.getLogger('taskgraph').setLevel(logging.INFO)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'
 CHURN_DIR = 'churn'

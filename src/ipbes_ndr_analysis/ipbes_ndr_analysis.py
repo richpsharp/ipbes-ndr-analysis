@@ -786,7 +786,7 @@ def main(raw_workspace_dir):
             pass
 
     task_graph = taskgraph.TaskGraph(
-        os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
+        os.path.join(workspace_dir, 'taskgraph_cache'), -1,
         TASKGRAPH_REPORTING_FREQUENCY)
 
     degree_bucket = 'ecoshard-root'
@@ -947,22 +947,22 @@ def main(raw_workspace_dir):
         target_path_list=[worldclim_2015_path],
         task_name='fetch globio landuse')
 
-    # esacci_2000_landuse_path = os.path.join(
-    #     churn_dir, LANDUSE_DIR,
-    #     'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif')
+    esacci_2000_landuse_path = os.path.join(
+        churn_dir, LANDUSE_DIR,
+        'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif')
 
-    # try:
-    #     os.makedirs(os.path.dirname(esacci_2000_landuse_path))
-    # except OSError:
-    #     pass
-    # fetch_esacci_2000_landuse_task = task_graph.add_task(
-    #     func=ecoshard.download_url,
-    #     args=(
-    #         'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
-    #         'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
-    #         esacci_2000_landuse_path),
-    #     target_path_list=[esacci_2000_landuse_path],
-    #     task_name='fetch esacci landuse')
+    try:
+        os.makedirs(os.path.dirname(esacci_2000_landuse_path))
+    except OSError:
+        pass
+    fetch_esacci_2000_landuse_task = task_graph.add_task(
+        func=ecoshard.download_url,
+        args=(
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
+            'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif',
+            esacci_2000_landuse_path),
+        target_path_list=[esacci_2000_landuse_path],
+        task_name='fetch esacci landuse')
 
     esacci_2015_landuse_path = os.path.join(
         churn_dir, LANDUSE_DIR,

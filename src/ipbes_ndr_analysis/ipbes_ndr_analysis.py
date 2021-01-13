@@ -58,13 +58,41 @@ FLOW_THRESHOLD = int(500**2*90 / UTM_PIXEL_SIZE)
 RET_LEN = 150.0
 K_VAL = 1.0
 
+
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+    """
+    def __init__(self, logger, level):
+       self.logger = logger
+       self.level = level
+       self.linebuf = ''
+
+    def write(self, buf):
+       for line in buf.rstrip().splitlines():
+          self.logger.log(self.level, line.rstrip())
+
+    def flush(self):
+        pass
+
+
 logging.basicConfig(
-    level=logging.DEBUG,
-    filename='log.txt',
-    format=(
-        '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
-        ' [%(funcName)s:%(lineno)d] %(message)s'))
-LOGGER = logging.getLogger(__name__)
+        level=logging.DEBUG,
+        format='%(asctime)s:%(levelname)s:%(name)s:[%(funcName)s:%(lineno)d] %(message)s',
+        filename='out.log',
+        filemode='a'
+        )
+log = logging.getLogger(__name__)
+sys.stdout = StreamToLogger(log, logging.INFO)
+sys.stderr = StreamToLogger(log, logging.ERROR)
+
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     filename='log.txt',
+#     format=(
+#         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
+#         ' [%(funcName)s:%(lineno)d] %(message)s'))
+# LOGGER = logging.getLogger(__name__)
 logging.getLogger('taskgraph').setLevel(logging.INFO)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'

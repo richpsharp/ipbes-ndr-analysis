@@ -82,9 +82,9 @@ logging.basicConfig(
         filename='out.log',
         filemode='a'
         )
-log = logging.getLogger(__name__)
-sys.stdout = StreamToLogger(log, logging.INFO)
-sys.stderr = StreamToLogger(log, logging.ERROR)
+LOGGER = logging.getLogger(__name__)
+sys.stdout = StreamToLogger(LOGGER, logging.INFO)
+sys.stderr = StreamToLogger(LOGGER, logging.ERROR)
 
 # logging.basicConfig(
 #     level=logging.DEBUG,

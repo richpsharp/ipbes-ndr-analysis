@@ -132,7 +132,7 @@ PRECIP_RASTER_PATHS = {
     # 'isimip_2015': f'{PRECIP_DIR}/precip_2015.tif',
     # 'worldclim_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-    'pnv_esa': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
+    'pnv_esa': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     #'worldclim_esa_2000': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'isimip_2050_ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     # 'isimip_2050_ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
@@ -951,13 +951,13 @@ def main(raw_workspace_dir):
         task_name='fetch globio landuse')
 
     pnv_esa_path = os.path.join(
-        precip_scenarios_dir_path,
-        './restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif')
+        churn_dir, LANDUSE_DIR,
+        'restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif')
     fetch_pnv_esa_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(
             'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
-            './restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif',
+            'restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif',
             pnv_esa_path),
         target_path_list=[pnv_esa_path],
         task_name='fetch globio landuse')

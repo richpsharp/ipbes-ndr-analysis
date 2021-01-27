@@ -111,7 +111,8 @@ LANDCOVER_RASTER_PATHS = {
     # 'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
-    'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
+    # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
+    'pnv_esa':(f"{LANDUSE_DIR}/restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif", 255), 
     # 'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
     # 'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
     # 'isimip_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
@@ -130,7 +131,8 @@ PRECIP_RASTER_PATHS = {
     # 'isimip_1980': f'{PRECIP_DIR}/precip_1980.tif',
     # 'isimip_2015': f'{PRECIP_DIR}/precip_2015.tif',
     # 'worldclim_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-    'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    # 'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'pnv_esa': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
     #'worldclim_esa_2000': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'isimip_2050_ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     # 'isimip_2050_ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
@@ -149,7 +151,8 @@ AG_RASTER_PATHS = {
     # 'isimip_1980': f'{AG_LOAD_DIR}/1980_ag_load.tif',
     # 'isimip_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     # 'worldclim_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
-    'worldclim_esa_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    # 'worldclim_esa_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'pnv_esa': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     #'worldclim_esa_2000': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     # 'isimip_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
     # 'isimip_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
@@ -186,7 +189,7 @@ def db_to_shapefile(database_path, target_vector_path):
             biophysical properties.
         target_vector_path (str): path to target vector created from DB.
 
-    Return:
+    Return
         None
     """
     LOGGER.info("reporting results")
@@ -945,6 +948,18 @@ def main(raw_workspace_dir):
             'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
             worldclim_2015_path),
         target_path_list=[worldclim_2015_path],
+        task_name='fetch globio landuse')
+
+    pnv_esa_path = os.path.join(
+        precip_scenarios_dir_path,
+        './restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif')
+    fetch_pnv_esa_task = task_graph.add_task(
+        func=ecoshard.download_url,
+        args=(
+            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
+            './restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif',
+            pnv_esa_path),
+        target_path_list=[pnv_esa_path],
         task_name='fetch globio landuse')
 
     esacci_2000_landuse_path = os.path.join(

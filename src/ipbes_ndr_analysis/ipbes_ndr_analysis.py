@@ -86,13 +86,6 @@ LOGGER = logging.getLogger(__name__)
 sys.stdout = StreamToLogger(LOGGER, logging.INFO)
 sys.stderr = StreamToLogger(LOGGER, logging.ERROR)
 
-# logging.basicConfig(
-#     level=logging.DEBUG,
-#     filename='log.txt',
-#     format=(
-#         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
-#         ' [%(funcName)s:%(lineno)d] %(message)s'))
-# LOGGER = logging.getLogger(__name__)
 logging.getLogger('taskgraph').setLevel(logging.INFO)
 
 BUCKET_DOWNLOAD_DIR = 'bucket_sync'
@@ -111,9 +104,9 @@ LANDCOVER_RASTER_PATHS = {
     # 'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_esa_2000': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
-    'pnv_esa_iis': (f"{LANDUSE_DIR}/ESACCI_PNV_iis_OA_ESAclasses_max.tif", -3.3999999521443642e+38),
+    'pnv_esa_iis': (f"{LANDUSE_DIR}/ESACCI_PNV_iis_OA_ESAclasses_max_md5_6f5909b99b6f92e03ae88ba743fd6f54.tif", -3.3999999521443642e+38),
     # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
-    #'pnv_esa':(f"{LANDUSE_DIR}/restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif", 255), 
+    #'pnv_esa':(f"{LANDUSE_DIR}/restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif", 255),
     # 'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
     # 'isimip_2050_ssp3': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP3.tif", -2147483648),
     # 'isimip_2050_ssp5': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP5.tif", -2147483648),
@@ -997,6 +990,20 @@ def main(raw_workspace_dir):
             esacci_2015_landuse_path),
         target_path_list=[esacci_2015_landuse_path],
         task_name='fetch esacci landuse')
+
+    esacci_pnv_iis_oa_esaclasses_max_path = os.path.join(
+        churn_dir, LANDUSE_DIR,
+        'ESACCI_PNV_iis_OA_ESAclasses_max_md5_6f5909b99b6f92e03ae88ba743fd6f54.tif')
+    os.makedirs(os.path.dirname(
+        esacci_pnv_iis_oa_esaclasses_max_path), exists_ok=True)
+    fetch_esacii_pnv_iss_oa_landuse_task = task_graph.add_task(
+        func=download_and_set_nodata,
+        args=(
+            f'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
+            f'{os.path.basename(esacci_pnv_iis_oa_esaclasses_max_path)}',
+            esacci_pnv_iis_oa_esaclasses_max_path, 255),
+        target_path_list=[esacci_pnv_iis_oa_esaclasses_max_path],
+        task_name='fetch esacci pnv iss os landuse')
 
     globio_landuse_archive_path = os.path.join(
         downloads_dir,
@@ -2370,3 +2377,11 @@ def calculate_rural_pop(
          (spatial_pop_scenario_rur_path, 1), (spatial_pop_2010_tot_path, 1)],
         _calc_rural_pop, target_rural_scenario_pop_path, gdal.GDT_Float32,
         target_pop_nodata)
+
+
+def download_and_set_nodata(url, target_path, target_nodata):
+    """Set download URL to target and set new nodata in one step."""
+    ecoshard.download_url(url, target_path)
+    raster = gdal.OpenEx(target_path, gdal.OF_RASTER | gdal.GA_Update)
+    band = raster.GetRasterBand(1)
+    band.SetNoDataValue(target_nodata)

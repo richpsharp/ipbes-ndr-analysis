@@ -785,7 +785,7 @@ def main(raw_workspace_dir):
             pass
 
     task_graph = taskgraph.TaskGraph(
-        os.path.join(workspace_dir, 'taskgraph_cache'), -1,
+        os.path.join(workspace_dir, 'taskgraph_cache'), N_CPUS,
         TASKGRAPH_REPORTING_FREQUENCY)
 
     degree_bucket = 'ecoshard-root'

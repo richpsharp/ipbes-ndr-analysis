@@ -995,7 +995,7 @@ def main(raw_workspace_dir):
         churn_dir, LANDUSE_DIR,
         'ESACCI_PNV_iis_OA_ESAclasses_max_md5_6f5909b99b6f92e03ae88ba743fd6f54.tif')
     os.makedirs(os.path.dirname(
-        esacci_pnv_iis_oa_esaclasses_max_path), exists_ok=True)
+        esacci_pnv_iis_oa_esaclasses_max_path), exist_ok=True)
     fetch_esacii_pnv_iss_oa_landuse_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(

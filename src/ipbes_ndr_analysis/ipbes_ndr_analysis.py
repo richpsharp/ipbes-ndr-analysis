@@ -997,11 +997,11 @@ def main(raw_workspace_dir):
     os.makedirs(os.path.dirname(
         esacci_pnv_iis_oa_esaclasses_max_path), exists_ok=True)
     fetch_esacii_pnv_iss_oa_landuse_task = task_graph.add_task(
-        func=download_and_set_nodata,
+        func=ecoshard.download_url,
         args=(
             f'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
             f'{os.path.basename(esacci_pnv_iis_oa_esaclasses_max_path)}',
-            esacci_pnv_iis_oa_esaclasses_max_path, 255),
+            esacci_pnv_iis_oa_esaclasses_max_path),
         target_path_list=[esacci_pnv_iis_oa_esaclasses_max_path],
         task_name='fetch esacci pnv iss os landuse')
 

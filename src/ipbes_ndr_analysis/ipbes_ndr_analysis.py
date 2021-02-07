@@ -7,6 +7,7 @@ import math
 import multiprocessing
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 import warnings
@@ -1123,23 +1124,18 @@ def main(raw_workspace_dir):
         target_path_list=[dem_touch_file_path],
         dependent_task_list=[global_dem_download_task],
         task_name=f'unzip global_dem')
-    dem_path_dir = os.path.join(churn_dir, 'global_dem_3s')
+    dem_tile_dir = os.path.join(churn_dir, 'global_dem_3s')
+    dem_vrt_path = os.path.join(
+        churn_dir, 'global_dem_3s', 'global_dem_3s.vrt')
 
-    dem_rtree_path = os.path.join(churn_dir, RTREE_PATH)
-    try:
-        os.makedirs(os.path.dirname(dem_rtree_path))
-    except OSError:
-        pass
-    dem_path_index_map_path = os.path.join(
-        churn_dir, 'dem_rtree_path_index_map.dat')
-    build_dem_rtree_task = task_graph.add_task(
-        func=build_raster_rtree,
-        args=(dem_path_dir, dem_path_index_map_path, dem_rtree_path),
-        target_path_list=[
-            dem_rtree_path+'.dat',  # rtree adds a ".dat" file
-            dem_path_index_map_path],
+    LOGGER.info('build vrt')
+    task_graph.add_task(
+        func=subprocess.run,
+        args=(f'gdalbuildvrt {dem_vrt_path} {dem_tile_dir}/*.tif',),
+        kwargs={'shell': True, 'check': True},
+        target_path_list=[dem_vrt_path],
         dependent_task_list=[unzip_dem_task],
-        task_name='build_raster_rtree')
+        task_name='build dem vrt')
 
     # create a results database
     database_path = os.path.join(workspace_dir, 'ipbes_ndr_results.db')
@@ -1227,8 +1223,8 @@ def main(raw_workspace_dir):
                 continue
             schedule_watershed_processing(
                 task_graph, database_path, database_lock, task_id, ws_prefix,
-                global_watershed_path, watershed_fid, dem_rtree_path,
-                dem_path_index_map_path,
+                global_watershed_path, watershed_fid,
+                dem_vrt_path,
                 gpw_total_dens_path,
                 eff_n_lucode_map,
                 load_n_lucode_map,
@@ -1405,8 +1401,8 @@ def aggregate_to_rasters(database_path, degree_raster_dir):
 
 def schedule_watershed_processing(
         task_graph, database_path, database_lock, task_id, ws_prefix,
-        watershed_path, watershed_fid, dem_rtree_path,
-        dem_path_index_map_path, gpw_2010_total_dens_path,
+        watershed_path, watershed_fid,
+        dem_vrt_path, gpw_2010_total_dens_path,
         eff_n_lucode_map, load_n_lucode_map, countries_regions_table_path,
         root_data_dir, target_result_database_path, workspace_dir,
         aligned_file_set):
@@ -1422,11 +1418,7 @@ def schedule_watershed_processing(
         database_lock (multiprocessing.Lock): used to synchronize access to
             the database.
         task_id (int): priority to set taskgraph at.
-        dem_rtree_path (str): path to RTree that can be used to determine
-            which DEM tiles intersect a bounding box.
-        dem_path_index_map_path (str): path to pickled dictionary that maps
-            `dem_rtree_path` IDs to file paths of the DEM tile that matches
-            that id.
+        dem_vrt_path (str): path to global DEM vrt.
         gpw_2010_total_dens_path (str): path to global population density in
             2010 in units of people / km&2
         eff_n_lucode_map (dict): maps lucodes to NDR efficiency values.
@@ -1466,13 +1458,15 @@ def schedule_watershed_processing(
     watershed_bb = [
         watershed_geometry.GetEnvelope()[i] for i in [0, 2, 1, 3]]
 
-    merge_watershed_dems_task = task_graph.add_task(
-        func=merge_watershed_dems,
+    global_dem_info = pygeoprocessing.get_raster_info(dem_vrt_path)
+    create_watershed_dem_task = task_graph.add_task(
+        func=pygeoprocessing.warp_raster,
         args=(
-            watershed_bb, watershed_fid, dem_rtree_path,
-            dem_path_index_map_path, watershed_dem_path),
+            dem_vrt_path, global_dem_info['pixel_size'],
+            watershed_dem_path, 'near'),
+        kwargs={'target_bb': watershed_bb},
         target_path_list=[watershed_dem_path],
-        task_name='merge_watershed_dems_%s' % ws_prefix)
+        task_name='create_watershed_dem_%s' % ws_prefix)
 
     masked_watershed_dem_path = watershed_dem_path.replace(
         '.tif', '_masked.tif')
@@ -1506,7 +1500,7 @@ def schedule_watershed_processing(
             masked_watershed_dem_path),
         target_path_list=[masked_watershed_dem_path],
         dependent_task_list=[
-            reproject_watershed_task, merge_watershed_dems_task],
+            reproject_watershed_task, create_watershed_dem_task],
         task_name='mask dem %s' % ws_prefix)
 
     base_raster_path_list = sorted(list(set(
@@ -1955,13 +1949,11 @@ def merge_watershed_dems(
             dem_path_index_map[i] for i in overlapping_dem_list]
         LOGGER.debug("%s %s", watershed_id, overlapping_dem_path_list)
         workspace_dir = os.path.dirname(target_dem_path)
-        try:
-            os.makedirs(workspace_dir)
-        except OSError:
-            pass
+        os.makedirs(workspace_dir, exist_ok=True)
         pygeoprocessing.stitch_rasters(
             [(path, 1) for path in overlapping_dem_path_list],
-            ['near']*len(overlapping_dem_path_list))
+            ['near']*len(overlapping_dem_path_list),
+            target_dem_path)
     else:
         LOGGER.debug(
             "no overlapping dems found for %s wsid %d", target_dem_path,

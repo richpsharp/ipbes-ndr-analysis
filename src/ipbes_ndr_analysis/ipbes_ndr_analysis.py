@@ -1959,9 +1959,9 @@ def merge_watershed_dems(
             os.makedirs(workspace_dir)
         except OSError:
             pass
-        pygeoprocessing.merge_rasters(
-            overlapping_dem_path_list, target_dem_path,
-            target_nodata=-32768.0, bounding_box=watershed_bb)
+        pygeoprocessing.stitch_rasters(
+            [(path, 1) for path in overlapping_dem_path_list],
+            ['near']*len(overlapping_dem_path_list))
     else:
         LOGGER.debug(
             "no overlapping dems found for %s wsid %d", target_dem_path,

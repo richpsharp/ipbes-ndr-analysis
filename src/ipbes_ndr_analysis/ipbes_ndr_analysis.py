@@ -1450,6 +1450,7 @@ def schedule_watershed_processing(
         workspace_dir, last_digits[-1], last_digits[-2],
         last_digits[-3], last_digits[-4],
         "%s_working_dir" % ws_prefix)
+    os.makedirs(ws_working_dir, exist_ok=True)
 
     watershed_dem_path = os.path.join(
         ws_working_dir, '%s_dem.tif' % ws_prefix)

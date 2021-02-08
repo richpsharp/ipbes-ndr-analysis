@@ -1210,6 +1210,8 @@ def main(raw_workspace_dir):
         for watershed_feature in watershed_layer:
             watershed_fid = watershed_feature.GetFID()
             ws_prefix = 'ws_%s_%d' % (watershed_basename, watershed_fid)
+            if ws_prefix != 'ws_as_bas_15s_beta_0':
+                continue
             if ws_prefix in scheduled_watershed_prefixes:
                 raise ValueError('%s has already been scheduled', ws_prefix)
             scheduled_watershed_prefixes.add(ws_prefix)
@@ -1563,9 +1565,7 @@ def schedule_watershed_processing(
             interpolation_mode_list,
             (UTM_PIXEL_SIZE, -UTM_PIXEL_SIZE),
             target_bounding_box),
-        kwargs={
-            'target_projection_wkt': epsg_srs.ExportToWkt()
-            },
+        kwargs={'target_projection_wkt': epsg_srs.ExportToWkt()},
         target_path_list=aligned_path_list,
         dependent_task_list=[mask_watershed_dem_task],
         task_name='align resize %s' % ws_prefix)

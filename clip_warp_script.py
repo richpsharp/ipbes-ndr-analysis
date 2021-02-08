@@ -24,6 +24,6 @@ if __name__ == '__main__':
 
     pygeoprocessing.warp_raster(
         args.base_raster_path, (300, -300), args.target_raster_path,
-        'near', target_bb=base_vector_info['bounding_box'],
+        'mode', target_bb=base_vector_info['bounding_box'],
         base_projection_wkt=None,
         target_projection_wkt=base_vector_info['projection_wkt'])

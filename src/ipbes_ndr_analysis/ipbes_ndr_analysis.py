@@ -999,6 +999,7 @@ def main(raw_workspace_dir):
     extensification_allcrops_path = os.path.join(
         churn_dir, AG_LOAD_DIR,
         os.path.basename(extensification_allcrops_url))
+    os.makedirs(os.path.dirname(extensification_allcrops_path), exist_ok=True)
 
     fetch_extensification_allcrops_task = task_graph.add_task(
         func=ecoshard.download_url,

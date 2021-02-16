@@ -985,7 +985,7 @@ def main(raw_workspace_dir):
     esacci_2015_landuse_path = os.path.join(
         churn_dir, LANDUSE_DIR,
         'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
-    os.makedirs(os.path.dirname(esacci_2015_landuse_path), exists_ok=True)
+    os.makedirs(os.path.dirname(esacci_2015_landuse_path), exist_ok=True)
     fetch_esacci_2015_landuse_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(

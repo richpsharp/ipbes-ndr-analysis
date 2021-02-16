@@ -1090,8 +1090,7 @@ def main(raw_workspace_dir):
         dependent_task_list=[fetch_watersheds_task],
         task_name=f'unzip watersheds_globe_HydroSHEDS_15arcseconds')
 
-    biophysical_table_url = 'https://storage.googleapis.com/nci-ecoshards/'
-        'nci-NDR-biophysical_table_forestry_grazing_md5_7524f2996fcc929ddc3aaccde249d59f.csv'
+    biophysical_table_url = 'https://storage.googleapis.com/nci-ecoshards/nci-NDR-biophysical_table_forestry_grazing_md5_7524f2996fcc929ddc3aaccde249d59f.csv'
     biophysical_table_path = os.path.join(
         downloads_dir, os.path.basename(biophysical_table_url))
     download_biophysical_table_task = task_graph.add_task(

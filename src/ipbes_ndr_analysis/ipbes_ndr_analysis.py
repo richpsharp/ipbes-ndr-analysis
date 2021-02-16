@@ -105,7 +105,9 @@ LANDCOVER_RASTER_PATHS = {
     # 'isimip_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_2015': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2015.tif", 255),
     # 'worldclim_esa_2000': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2000-v2.0.7_md5_9bf00e31ed846fc7bc21e5118717e6e8.tif", 255),
-    'pnv_esa_iis': (f"{LANDUSE_DIR}/ESACCI_PNV_iis_OA_ESAclasses_max_md5_6f5909b99b6f92e03ae88ba743fd6f54.tif", -3.3999999521443642e+38),
+    'global_potential_vegetation': (f"{LANDUSE_DIR}/global_potential_vegetation_md5_61ee1f0ffe1b6eb6f2505845f333cf30.tif", 255),
+    'grazing_expansion': (f'{LANDUSE_DIR}/grazing_expansion_md5_140803bc8aef02a1742aa1d1757e9e76.tif', 255),
+    # 'pnv_esa_iis': (f"{LANDUSE_DIR}/ESACCI_PNV_iis_OA_ESAclasses_max_md5_6f5909b99b6f92e03ae88ba743fd6f54.tif", -3.3999999521443642e+38),
     # 'worldclim_esa_2015': (f"{LANDUSE_DIR}/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif", 255),
     #'pnv_esa':(f"{LANDUSE_DIR}/restoration__md5_2bb65fb3b7df00a06133cd44eabb82d8.tif", 255),
     # 'isimip_2050_ssp1': (f"{LANDUSE_DIR}/Globio4_landuse_10sec_2050_cropint_SSP1.tif", -2147483648),
@@ -129,7 +131,9 @@ PRECIP_RASTER_PATHS = {
     # 'worldclim_esa_2015': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'pnv_esa': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'worldclim_esa_2000': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
-    'pnv_esa_iis': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    #'pnv_esa_iis': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'global_potential_vegetation': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
+    'grazing_expansion': f'{PRECIP_DIR}/worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
     # 'isimip_2050_ssp1': f'{PRECIP_DIR}/ssp1_2050.tif',
     # 'isimip_2050_ssp3': f'{PRECIP_DIR}/ssp3_2050.tif',
     # 'isimip_2050_ssp5': f'{PRECIP_DIR}/ssp5_2050.tif',
@@ -150,7 +154,9 @@ AG_RASTER_PATHS = {
     # 'worldclim_esa_2015': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     #'pnv_esa': f'{AG_LOAD_DIR}/2015_ag_load.tif',
     #'worldclim_esa_2000': f'{AG_LOAD_DIR}/2015_ag_load.tif',
-    'pnv_esa_iis': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    #'pnv_esa_iis': f'{AG_LOAD_DIR}/2015_ag_load.tif',
+    'global_potential_vegetation': f'{AG_LOAD_DIR}/ExtensificationNapp_allcrops_rainfedfootprint_gapfilled_observedNappRevB_md5_1185e457751b672c67cc8c6bf7016d03.tif',
+    'grazing_expansion': f'{AG_LOAD_DIR}/ExtensificationNapp_allcrops_rainfedfootprint_gapfilled_observedNappRevB_md5_1185e457751b672c67cc8c6bf7016d03.tif',
     # 'isimip_2050_ssp1': f'{AG_LOAD_DIR}/ssp1_2050_ag_load.tif',
     # 'isimip_2050_ssp3': f'{AG_LOAD_DIR}/ssp3_2050_ag_load.tif',
     # 'isimip_2050_ssp5': f'{AG_LOAD_DIR}/ssp5_2050_ag_load.tif',
@@ -945,7 +951,7 @@ def main(raw_workspace_dir):
             'worldclim_2015_md5_16356b3770460a390de7e761a27dbfa1.tif',
             worldclim_2015_path),
         target_path_list=[worldclim_2015_path],
-        task_name='fetch globio landuse')
+        task_name='fetch worldclim 2015 precip')
 
     pnv_esa_path = os.path.join(
         churn_dir, LANDUSE_DIR,
@@ -979,10 +985,7 @@ def main(raw_workspace_dir):
     esacci_2015_landuse_path = os.path.join(
         churn_dir, LANDUSE_DIR,
         'ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7_md5_1254d25f937e6d9bdee5779d377c5aa4.tif')
-    try:
-        os.makedirs(os.path.dirname(esacci_2015_landuse_path))
-    except OSError:
-        pass
+    os.makedirs(os.path.dirname(esacci_2015_landuse_path), exists_ok=True)
     fetch_esacci_2015_landuse_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(
@@ -991,6 +994,42 @@ def main(raw_workspace_dir):
             esacci_2015_landuse_path),
         target_path_list=[esacci_2015_landuse_path],
         task_name='fetch esacci landuse')
+
+    extensification_allcrops_url = 'https://storage.googleapis.com/nci-ecoshards/scenarios050420/ExtensificationNapp_allcrops_rainfedfootprint_gapfilled_observedNappRevB_md5_1185e457751b672c67cc8c6bf7016d03.tif'
+    extensification_allcrops_path = os.path.join(
+        churn_dir, AG_LOAD_DIR,
+        os.path.basename(extensification_allcrops_url))
+
+    fetch_extensification_allcrops_task = task_graph.add_task(
+        func=ecoshard.download_url,
+        args=(
+            extensification_allcrops_url,
+            extensification_allcrops_path),
+        target_path_list=[extensification_allcrops_path],
+        task_name=f'fetch {os.path.basename(extensification_allcrops_path)}')
+
+    global_potential_vegetation_url = 'https://storage.googleapis.com/nci-ecoshards/scenarios050420/global_potential_vegetation_md5_61ee1f0ffe1b6eb6f2505845f333cf30.tif'
+    global_potential_vegetation_path = os.path.join(
+        churn_dir, LANDUSE_DIR, os.path.basename(global_potential_vegetation_url))
+    os.makedirs(os.path.dirname(
+        global_potential_vegetation_path), exist_ok=True)
+    fetch_esacii_pnv_iss_oa_landuse_task = task_graph.add_task(
+        func=ecoshard.download_url,
+        args=(
+            global_potential_vegetation_url,
+            global_potential_vegetation_path),
+        target_path_list=[global_potential_vegetation_path],
+        task_name=f'fetch {os.path.basename(global_potential_vegetation_path)}')
+
+    grazing_expansion_url = 'https://storage.googleapis.com/nci-ecoshards/grazing_expansion_md5_140803bc8aef02a1742aa1d1757e9e76.tif'
+    grazing_expansion_path = os.path.join(
+        churn_dir, LANDUSE_DIR, os.path.basename(grazing_expansion_url))
+    os.makedirs(os.path.dirname(grazing_expansion_path), exist_ok=True)
+    fetch_esacii_pnv_iss_oa_landuse_task = task_graph.add_task(
+        func=ecoshard.download_url,
+        args=(grazing_expansion_url, grazing_expansion_path),
+        target_path_list=[grazing_expansion_path],
+        task_name=f'fetch {os.path.basename(grazing_expansion_path)}')
 
     esacci_pnv_iis_oa_esaclasses_max_path = os.path.join(
         churn_dir, LANDUSE_DIR,
@@ -1051,16 +1090,18 @@ def main(raw_workspace_dir):
         dependent_task_list=[fetch_watersheds_task],
         task_name=f'unzip watersheds_globe_HydroSHEDS_15arcseconds')
 
+    biophysical_table_url = 'https://storage.googleapis.com/nci-ecoshards/'
+        'nci-NDR-biophysical_table_forestry_grazing_md5_7524f2996fcc929ddc3aaccde249d59f.csv'
     biophysical_table_path = os.path.join(
-        downloads_dir, 'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv')
+        downloads_dir, os.path.basename(biophysical_table_url))
     download_biophysical_table_task = task_graph.add_task(
         func=ecoshard.download_url,
         args=(
-            'https://storage.googleapis.com/ipbes-ndr-ecoshard-data/'
-            'NDR_representative_table_md5_3d4c81c55ff653f6d113bf994b120f7c.csv',
+            biophysical_table_url,
             biophysical_table_path),
         target_path_list=[biophysical_table_path],
-        task_name='download biophysical table')
+        task_name=f'download biophysical table {os.path.basename(biophysical_table_path)}')
+
     clean_biophysical_table_pickle_path = os.path.join(
         churn_dir, 'biophysical.pickle')
     clean_biophysical_task = task_graph.add_task(
